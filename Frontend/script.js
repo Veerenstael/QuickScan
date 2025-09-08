@@ -1,3 +1,4 @@
+// De vragen per categorie
 const QUESTIONS = {
   "Organisatie": [
     "Zijn rollen, verantwoordelijkheden en bevoegdheden binnen onderhoudsprocessen helder belegd?",
@@ -29,6 +30,7 @@ const QUESTIONS = {
   ]
 };
 
+// Dynamisch de vragen inladen
 const qContainer = document.getElementById("questions");
 Object.entries(QUESTIONS).forEach(([section, qs]) => {
   const h3 = document.createElement("h3");
@@ -47,16 +49,24 @@ Object.entries(QUESTIONS).forEach(([section, qs]) => {
   });
 });
 
+// Form versturen
 document.getElementById("quickscan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  const res = await fetch("https://jouw-backend.onrender.com/submit", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data)
-  });
-  const json = await res.json();
-  document.getElementById("result").innerText = `Bedankt! Je totaalscore is ${json.total_score}. PDF is verzonden naar ${data.email}`;
+  try {
+    const res = await fetch("https://jouw-backend.onrender.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    document.getElementById("result").innerText = 
+      `Bedankt ${data.name}! Je totaalscore is ${json.total_score}. 
+       Een PDF met de resultaten is verstuurd naar ${data.email}.`;
+  } catch (err) {
+    document.getElementById("result").innerText = 
+      "Er ging iets mis bij het versturen. Controleer of de backend bereikbaar is.";
+  }
 });
