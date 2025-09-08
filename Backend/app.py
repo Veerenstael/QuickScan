@@ -17,10 +17,13 @@ def ai_score(answer, question):
     """Vraag de AI om een score tussen 1 en 4"""
     prompt = f"Geef een score van 1 (slecht) tot 4 (uitstekend) voor dit antwoord op de vraag '{question}': {answer}\nAlleen het cijfer teruggeven."
     response = openai.ChatCompletion.create(
-        model="gpt-5",
+        model="gpt-4o-mini",  # veiliger model voor scoring
         messages=[{"role": "user", "content": prompt}]
     )
-    score = int(response["choices"][0]["message"]["content"].strip())
+    try:
+        score = int(response["choices"][0]["message"]["content"].strip())
+    except Exception:
+        score = 2  # fallback als AI geen getal teruggeeft
     return score
 
 @app.route("/submit", methods=["POST"])
@@ -51,7 +54,7 @@ def submit():
             pdf.multi_cell(0, 10, f"Score: {score}")
             pdf.ln(5)
 
-    total_score = round(sum(scores) / len(scores), 2)
+    total_score = round(sum(scores) / len(scores), 2) if scores else 0
     pdf.cell(200, 10, f"Totaalscore: {total_score}", ln=True)
     filename = "quickscan.pdf"
     pdf.output(filename)
@@ -68,7 +71,11 @@ def submit():
         attach.add_header("Content-Disposition", "attachment", filename=filename)
         msg.attach(attach)
 
-    s = smtplib.SMTP("smtp.gmail.com", 587)
+    # Keuze: gebruik Office365 of Gmail
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.office365.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+
+    s = smtplib.SMTP(smtp_server, smtp_port)
     s.starttls()
     s.login(os.getenv("EMAIL_USER"), os.getenv("EMAIL_PASS"))
     s.send_message(msg)
