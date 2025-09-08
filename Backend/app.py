@@ -61,4 +61,38 @@ def submit():
                 scores.append(score)
                 pdf.multi_cell(0, 10, f"Vraag: {key}")
                 pdf.multi_cell(0, 10, f"Antwoord: {value}")
-                pdf.multi_cell(0, 10, f"Sc_
+                pdf.multi_cell(0, 10, f"Score: {score}")
+                pdf.ln(5)
+
+        total_score = round(sum(scores) / len(scores), 2) if scores else 0
+        pdf.cell(200, 10, f"Totaalscore: {total_score}", ln=True)
+        filename = "quickscan.pdf"
+        pdf.output(filename)
+
+        # E-mail met PDF
+        msg = MIMEMultipart()
+        msg["From"] = os.getenv("EMAIL_USER")
+        msg["To"] = data.get("email")
+        msg["Subject"] = "Resultaten Veerenstael Quick Scan"
+        msg.attach(MIMEText("Beste,\n\nIn de bijlage vind je de resultaten van je Quick Scan.\n\nMet vriendelijke groet,\nVeerenstael"))
+
+        with open(filename, "rb") as f:
+            attach = MIMEApplication(f.read(), _subtype="pdf")
+            attach.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(attach)
+
+        smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+
+        s = smtplib.SMTP(smtp_server, smtp_port)
+        s.starttls()
+        s.login(os.getenv("EMAIL_USER"), os.getenv("EMAIL_PASS"))
+        s.send_message(msg)
+        s.quit()
+
+        app.logger.info("QuickScan succesvol verstuurd")
+        return jsonify({"total_score": total_score})
+
+    except Exception as e:
+        app.logger.error(f"Fout in submit: {e}")
+        return jsonify({"error": str(e)}), 500
