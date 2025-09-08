@@ -6,38 +6,29 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from datetime import datetime
-import openai
 import os
+from openai import OpenAI
 
 app = Flask(__name__)
-CORS(app)  # Zorgt dat frontend (Netlify) toegang krijgt tot backend
+CORS(app)  # Laat Netlify-frontend verbinding maken
 
-# OpenAI API key uit environment
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ai_score(answer, question):
     """Vraag de AI om een score tussen 1 en 4"""
-    prompt = f"Geef een score van 1 (slecht) tot 4 (uitstekend) voor dit antwoord op de vraag '{question}': {answer}\nAlleen het cijfer teruggeven."
-    try:
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-def ai_score(answer, question):
     prompt = f"Geef een score van 1 (slecht) tot 4 (uitstekend) voor dit antwoord op de vraag '{question}': {answer}\nAlleen het cijfer teruggeven."
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
-        score = int(response.choices[0].message.content.strip())
+        score_text = response.choices[0].message.content.strip()
+        score = int(score_text)
         return score
     except Exception as e:
         app.logger.error(f"OpenAI fout: {e}")
-        return 2
-
-        return score
-    except Exception as e:
-        app.logger.error(f"OpenAI fout: {e}")
-        return 2  # fallback score
+        return 2  # fallback
 
 @app.route("/", methods=["GET"])
 def home():
@@ -106,4 +97,3 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
-
