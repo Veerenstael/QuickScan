@@ -56,17 +56,29 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
   const data = Object.fromEntries(formData.entries());
 
   try {
-    const res = await fetch("https://jouw-backend.onrender.com/submit", {
+    const res = await fetch("https://veerenstael-quickscan-backend.onrender.com/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
+
+    if (!res.ok) throw new Error("Backend niet bereikbaar");
+
     const json = await res.json();
-    document.getElementById("result").innerText = 
-      `Bedankt ${data.name}! Je totaalscore is ${json.total_score}. 
-       Een PDF met de resultaten is verstuurd naar ${data.email}.`;
+    document.getElementById("result").innerHTML = `
+      <div class="result-block">
+        <h2>Resultaten QuickScan</h2>
+        <p>Totaalscore: <strong>${json.total_score}</strong></p>
+        <p>Bedankt ${data.name}! Een PDF met de resultaten is verstuurd naar <strong>${data.email}</strong>.</p>
+      </div>
+    `;
   } catch (err) {
-    document.getElementById("result").innerText = 
-      "Er ging iets mis bij het versturen. Controleer of de backend bereikbaar is.";
+    document.getElementById("result").innerHTML = `
+      <div class="result-block">
+        <h2>Er ging iets mis</h2>
+        <p>De QuickScan kon niet worden verstuurd. Controleer of de backend bereikbaar is en probeer opnieuw.</p>
+      </div>
+    `;
+    console.error(err);
   }
 });
