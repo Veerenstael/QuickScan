@@ -65,11 +65,13 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     if (!res.ok) throw new Error("Backend niet bereikbaar");
 
     const json = await res.json();
+
     document.getElementById("result").innerHTML = `
       <div class="result-block">
         <h2>Resultaten QuickScan</h2>
-        <p>Totaalscore: <strong>${json.total_score}</strong></p>
-        <p>Bedankt ${data.name}! Een PDF met de resultaten is verstuurd naar <strong>${data.email}</strong>.</p>
+        <p><strong>Totaalscore:</strong> ${json.total_score}</p>
+        <p><strong>Samenvatting:</strong><br/>${json.summary}</p>
+        <p>Bedankt ${data.name}! Een PDF met de resultaten is verstuurd naar <strong>${data.email}</strong> (kopie ook naar Veerenstael).</p>
       </div>
     `;
   } catch (err) {
