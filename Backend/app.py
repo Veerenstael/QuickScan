@@ -11,13 +11,12 @@ import re
 from openai import OpenAI
 
 app = Flask(__name__)
-CORS(app)  # Laat Netlify-frontend verbinding maken
+CORS(app)
 
-# OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ai_score(answer, question):
-    """Vraag de AI om een score tussen 1 en 4"""
+    """Geef score 1-4 voor antwoord"""
     prompt = (
         f"Beoordeel het volgende antwoord op de vraag '{question}': {answer}\n\n"
         "Geef uitsluitend één getal terug, van 1 (slecht) tot 4 (uitstekend)."
@@ -28,15 +27,29 @@ def ai_score(answer, question):
             messages=[{"role": "user", "content": prompt}]
         )
         output = response.choices[0].message.content.strip()
-        app.logger.info(f"AI output: {output}")  # log wat er terugkomt
         match = re.search(r"[1-4]", output)
-        if match:
-            return int(match.group(0))
-        else:
-            return 2  # fallback
+        return int(match.group(0)) if match else 2
     except Exception as e:
-        app.logger.error(f"OpenAI fout: {e}")
+        app.logger.error(f"OpenAI fout (score): {e}")
         return 2
+
+def ai_summary(data):
+    """Genereer korte samenvatting van antwoorden"""
+    try:
+        antwoorden = "\n".join([f"{k}: {v}" for k, v in data.items() if "_" in k])
+        prompt = (
+            f"Maak een korte samenvatting (ongeveer 5 zinnen) van deze Quick Scan antwoorden.\n\n"
+            f"{antwoorden}\n\n"
+            "Geef een zakelijke samenvatting en sluit af met een conclusie."
+        )
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        app.logger.error(f"OpenAI fout (samenvatting): {e}")
+        return "Samenvatting kon niet worden gegenereerd."
 
 @app.route("/", methods=["GET"])
 def home():
@@ -49,6 +62,7 @@ def submit():
         app.logger.info(f"Ontvangen data: {data}")
 
         scores = []
+        antwoorden_voor_summary = []
 
         # PDF opbouwen
         pdf = FPDF()
@@ -65,25 +79,36 @@ def submit():
 
         # Vragen en antwoorden verwerken
         for key, value in data.items():
-            if "_" in key:  # vraagvelden
+            if "_" in key:
                 score = ai_score(value, key)
                 scores.append(score)
+                antwoorden_voor_summary.append(f"{key}: {value}")
                 pdf.multi_cell(0, 10, f"Vraag: {key}")
                 pdf.multi_cell(0, 10, f"Antwoord: {value}")
                 pdf.multi_cell(0, 10, f"Score: {score}")
                 pdf.ln(5)
 
         total_score = round(sum(scores) / len(scores), 2) if scores else 0
-        pdf.cell(200, 10, f"Totaalscore: {total_score}", ln=True)
+
+        # AI-samenvatting
+        summary_text = ai_summary(data)
+        pdf.multi_cell(0, 10, f"Samenvatting AI:\n{summary_text}")
+
         filename = "quickscan.pdf"
         pdf.output(filename)
 
-        # E-mail met PDF
+        # E-mail met PDF (naar gebruiker én Veerenstael)
         msg = MIMEMultipart()
         msg["From"] = os.getenv("EMAIL_USER")
         msg["To"] = data.get("email")
+        msg["Cc"] = "quickscanveerenstael@gmail.com"
         msg["Subject"] = "Resultaten Veerenstael Quick Scan"
-        msg.attach(MIMEText("Beste,\n\nIn de bijlage vind je de resultaten van je Quick Scan.\n\nMet vriendelijke groet,\nVeerenstael"))
+        msg.attach(MIMEText(
+            f"Beste {data.get('name')},\n\n"
+            f"In de bijlage vind je de resultaten van je Quick Scan.\n\n"
+            f"Samenvatting:\n{summary_text}\n\n"
+            f"Met vriendelijke groet,\nVeerenstael"
+        ))
 
         with open(filename, "rb") as f:
             attach = MIMEApplication(f.read(), _subtype="pdf")
@@ -100,7 +125,7 @@ def submit():
         s.quit()
 
         app.logger.info("QuickScan succesvol verstuurd")
-        return jsonify({"total_score": total_score})
+        return jsonify({"total_score": total_score, "summary": summary_text})
 
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
