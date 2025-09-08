@@ -8,17 +8,22 @@
 </head>
 <body>
   <div class="dashboard-bg">
+    <!-- Logo en titel -->
     <div class="logo-header">
-      <img src="logo.png" alt="Veerenstael" class="veerenstael-logo"/>
+      <img src="https://www.veerenstael.nl/wp-content/uploads/2020/06/logo-veerenstael-wit.png" 
+           alt="Veerenstael" class="veerenstael-logo"/>
       <div class="subtitle-title">Veerenstael Quick Scan</div>
     </div>
 
+    <!-- Card -->
     <div class="main-card">
-      <form id="quickscan-form">
-        <div class="header">
-          <p>Beantwoord de vragen en ontvang een rapport per mail</p>
-        </div>
+      <div class="header">
+        <h2>QuickScan formulier</h2>
+        <p>Beantwoord de vragen en ontvang een rapport per mail</p>
+      </div>
 
+      <form id="quickscan-form">
+        <!-- Contactgegevens -->
         <label>Naam</label>
         <input type="text" name="name" required />
 
@@ -33,17 +38,21 @@
 
         <hr style="margin:20px 0; border:1px solid #3b4970"/>
 
+        <!-- Vragenlijst dynamisch -->
         <div id="questions"></div>
 
+        <!-- Knoppen -->
         <div class="button-row">
           <button type="submit" class="green">Versturen</button>
           <button type="reset" class="reset-btn">Reset</button>
         </div>
       </form>
+
+      <!-- Resultaat -->
       <div id="result" class="info-block"></div>
     </div>
   </div>
-  <script src="script.js"></script>
+
+  <script src="./script.js"></script>
 </body>
 </html>
-
