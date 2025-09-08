@@ -19,11 +19,21 @@ def ai_score(answer, question):
     """Vraag de AI om een score tussen 1 en 4"""
     prompt = f"Geef een score van 1 (slecht) tot 4 (uitstekend) voor dit antwoord op de vraag '{question}': {answer}\nAlleen het cijfer teruggeven."
     try:
-        response = openai.ChatCompletion.create(
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def ai_score(answer, question):
+    prompt = f"Geef een score van 1 (slecht) tot 4 (uitstekend) voor dit antwoord op de vraag '{question}': {answer}\nAlleen het cijfer teruggeven."
+    try:
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
-        score = int(response["choices"][0]["message"]["content"].strip())
+        score = int(response.choices[0].message.content.strip())
+        return score
+    except Exception as e:
+        app.logger.error(f"OpenAI fout: {e}")
+        return 2
+
         return score
     except Exception as e:
         app.logger.error(f"OpenAI fout: {e}")
@@ -96,3 +106,4 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
+
