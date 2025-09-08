@@ -7,6 +7,7 @@ from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from datetime import datetime
 import os
+import re
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -17,18 +18,25 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ai_score(answer, question):
     """Vraag de AI om een score tussen 1 en 4"""
-    prompt = f"Geef een score van 1 (slecht) tot 4 (uitstekend) voor dit antwoord op de vraag '{question}': {answer}\nAlleen het cijfer teruggeven."
+    prompt = (
+        f"Beoordeel het volgende antwoord op de vraag '{question}': {answer}\n\n"
+        "Geef uitsluitend één getal terug, van 1 (slecht) tot 4 (uitstekend)."
+    )
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
-        score_text = response.choices[0].message.content.strip()
-        score = int(score_text)
-        return score
+        output = response.choices[0].message.content.strip()
+        app.logger.info(f"AI output: {output}")  # log wat er terugkomt
+        match = re.search(r"[1-4]", output)
+        if match:
+            return int(match.group(0))
+        else:
+            return 2  # fallback
     except Exception as e:
         app.logger.error(f"OpenAI fout: {e}")
-        return 2  # fallback
+        return 2
 
 @app.route("/", methods=["GET"])
 def home():
