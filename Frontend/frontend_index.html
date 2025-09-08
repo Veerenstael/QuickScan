@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Veerenstael Quick Scan</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="dashboard-bg">
+    <div class="logo-header">
+      <img src="logo.png" alt="Veerenstael" class="veerenstael-logo"/>
+      <div class="subtitle-title">Veerenstael Quick Scan</div>
+    </div>
+
+    <div class="main-card">
+      <form id="quickscan-form">
+        <div class="header">
+          <p>Beantwoord de vragen en ontvang een rapport per mail</p>
+        </div>
+
+        <label>Naam</label>
+        <input type="text" name="name" required />
+
+        <label>Bedrijf</label>
+        <input type="text" name="company" required />
+
+        <label>Email</label>
+        <input type="email" name="email" required />
+
+        <label>Telefoonnummer</label>
+        <input type="text" name="phone" />
+
+        <hr style="margin:20px 0; border:1px solid #3b4970"/>
+
+        <div id="questions"></div>
+
+        <div class="button-row">
+          <button type="submit" class="green">Versturen</button>
+          <button type="reset" class="reset-btn">Reset</button>
+        </div>
+      </form>
+      <div id="result" class="info-block"></div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
