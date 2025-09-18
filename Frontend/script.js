@@ -1,12 +1,56 @@
-// ===== Config: automatische backend-detectie =====
-// - Als QUICKSCAN_BACKEND op window staat, gebruik die.
-// - Anders: bij localhost -> http://127.0.0.1:5000
-// - Anders: gebruik relatieve pad (zelfde host als frontend).
-const BACKEND_URL =
-  (typeof window !== "undefined" && window.QUICKSCAN_BACKEND) ||
-  (location.hostname === "localhost" || location.hostname === "127.0.0.1"
-    ? "http://127.0.0.1:5000"
-    : "");
+// ===== Backend-basis: robuuste detectie + fallback =====
+// Volgorde:
+// 1) window.QUICKSCAN_BACKEND (zonder trailing slash)
+// 2) localhost fallback (voor lokale ontwikkeling)
+// 3) Productie fallback: jouw Render-URL
+function resolveBackendBase() {
+  const raw = (typeof window !== "undefined" && window.QUICKSCAN_BACKEND != null)
+    ? String(window.QUICKSCAN_BACKEND).trim()
+    : "";
+
+  let base = raw;
+
+  if (!base) {
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      base = "http://127.0.0.1:5000";
+    } else {
+      base = "https://veerenstael-quickscan-backend.onrender.com";
+    }
+  }
+
+  // verwijder trailing slashes
+  base = base.replace(/\/+$/, "");
+
+  // valideer URL
+  try {
+    // Als dit faalt zat er iets als "https://" of "veerenstael..." zonder schema
+    const u = new URL(base);
+    if (!u.protocol.startsWith("http")) throw new Error("Ongeldig protocol");
+  } catch (e) {
+    throw new Error(`Ongeldige QUICKSCAN_BACKEND basis-URL: "${base}".`);
+  }
+
+  return base;
+}
+
+let BACKEND_BASE;
+try {
+  BACKEND_BASE = resolveBackendBase();
+} catch (e) {
+  console.error(e);
+  // Toon nette melding in de UI; formulier blijft zichtbaar
+  const res = document.getElementById("result");
+  if (res) {
+    res.innerHTML = `
+      <div class="result-block">
+        <h2>Er ging iets mis</h2>
+        <p><strong>Configuratiefout</strong><br/>${e.message}</p>
+      </div>
+    `;
+  }
+  // Laat een veilige default staan zodat de rest van het script blijft werken
+  BACKEND_BASE = "https://veerenstael-quickscan-backend.onrender.com";
+}
 
 // ===== Vragen =====
 const QUESTIONS = {
@@ -48,7 +92,7 @@ function createOption(v) {
   return o;
 }
 
-// Dynamisch de vragen inladen
+// Dynamisch de vragen inladen (textarea + score 1–5 + hidden label)
 const qContainer = document.getElementById("questions");
 Object.entries(QUESTIONS).forEach(([section, qs]) => {
   const h3 = document.createElement("h3");
@@ -88,8 +132,10 @@ Object.entries(QUESTIONS).forEach(([section, qs]) => {
   });
 });
 
+// Intro-tekst ook meesturen zodat deze in de PDF komt
 const introEl = document.getElementById("intro");
 
+// UI error helper
 function showError(where, msg) {
   document.getElementById("result").innerHTML = `
     <div class="result-block">
@@ -101,6 +147,7 @@ function showError(where, msg) {
 
 document.getElementById("quickscan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
@@ -109,8 +156,10 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     data.introText = p ? p.innerText : "";
   }
 
+  const submitUrl = `${BACKEND_BASE}/submit`;
+
   try {
-    const res = await fetch(`${BACKEND_URL}/submit`, {
+    const res = await fetch(submitUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
