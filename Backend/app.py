@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from fpdf import FPDF
 import smtplib
@@ -8,17 +8,25 @@ from email.mime.text import MIMEText
 from datetime import datetime
 import os
 import re
-import requests
-from openai import OpenAI
+
+# ====== Optioneel OpenAI client ======
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+client = None
+if OPENAI_KEY:
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_KEY)
+    except Exception:
+        client = None
 
 app = Flask(__name__)
-CORS(app)
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ===== helpers =====
 def ai_score(answer, question):
-    """Geef score 1-5 voor antwoord"""
+    """Geef score 1–5; valt terug op 3 zonder OpenAI of bij fout."""
+    if not client:
+        return 3
     prompt = (
         f"Beoordeel kort het volgende antwoord op de vraag '{question}': {answer}\n\n"
         "Geef uitsluitend één getal terug, van 1 (slecht) tot 5 (uitstekend)."
@@ -31,58 +39,49 @@ def ai_score(answer, question):
         output = response.choices[0].message.content.strip()
         match = re.search(r"[1-5]", output)
         return int(match.group(0)) if match else 3
-    except Exception as e:
-        app.logger.error(f"OpenAI fout (score): {e}")
+    except Exception:
         return 3
 
-def ai_summary(data):
-    """Genereer korte samenvatting van antwoorden"""
+def ai_summary(pairs):
+    """Korte samenvatting; valt terug op generieke tekst zonder OpenAI."""
+    if not client:
+        return "Korte samenvatting: de ingevulde antwoorden zijn verzameld en geven aanknopingspunten voor verbetering binnen asset management. De uitwerking volgt in een vervolggesprek."
+    regels = []
+    for vraag, antwoord in pairs:
+        regels.append(f"{vraag}: {antwoord}")
+    tekst = "\n".join(regels)
+    prompt = (
+        "Maak een korte zakelijke samenvatting (±5 zinnen) van deze QuickScan-antwoordset.\n\n"
+        f"{tekst}\n\n"
+        "Sluit af met een beknopte conclusie."
+    )
     try:
-        # verzamel alle vraag/antwoordregels
-        regels = []
-        for k, v in data.items():
-            if k.endswith("_answer"):
-                label_key = k.replace("_answer", "_label")
-                vraag = data.get(label_key, k)
-                regels.append(f"{vraag}: {v}")
-        antwoorden = "\n".join(regels)
-
-        prompt = (
-            "Maak een korte zakelijke samenvatting (±5 zinnen) van deze QuickScan-antwoordset.\n\n"
-            f"{antwoorden}\n\n"
-            "Sluit af met een beknopte conclusie."
-        )
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
-    except Exception as e:
-        app.logger.error(f"OpenAI fout (samenvatting): {e}")
+    except Exception:
         return "Samenvatting kon niet worden gegenereerd."
 
-def fetch_logo(path="veerenstael_logo.png"):
-    """Download het Veerenstael-logo indien nog niet aanwezig (voor PDF-header)."""
-    if not os.path.exists(path):
-        try:
-            url = "https://www.veerenstael.nl/wp-content/uploads/2020/06/logo-veerenstael-wit.png"
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            with open(path, "wb") as f:
-                f.write(r.content)
-        except Exception as e:
-            app.logger.error(f"Kon logo niet ophalen: {e}")
-            return None
-    return path if os.path.exists(path) else None
+def find_logo():
+    """Zoek lokaal logo voor PDF-header."""
+    for p in ["favicon.png", "logo.png", "static/favicon.png"]:
+        if os.path.exists(p):
+            return p
+    return None
 
 class ReportPDF(FPDF):
     def header(self):
-        # bovenbalk + logo
+        # Headerbalk
         self.set_fill_color(34, 51, 68)   # donkerblauw
         self.rect(0, 0, 210, 22, "F")
-        logo_path = fetch_logo()
+        logo_path = find_logo()
         if logo_path:
-            self.image(logo_path, x=10, y=3, w=50)
+            try:
+                self.image(logo_path, x=10, y=3, w=14)
+            except Exception:
+                pass
         self.set_y(26)
 
     def section_title(self, txt):
@@ -97,15 +96,30 @@ class ReportPDF(FPDF):
         self.set_font("Arial", "B", 11)
         self.cell(0, 7, v, ln=True)
 
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
 @app.route("/", methods=["GET"])
 def home():
     return "✅ Veerenstael Quick Scan backend is live"
 
-@app.route("/submit", methods=["POST"])
+@app.route("/submit", methods=["POST", "OPTIONS"])
 def submit():
+    if request.method == "OPTIONS":
+        # CORS preflight
+        return ("", 204)
+
     try:
-        data = request.json
-        app.logger.info(f"Ontvangen data: {data}")
+        data = request.json or {}
+        # Verzamel vragen/antwoorden uit payload
+        vraag_antw_pairs = []
+        keys = [k for k in data.keys() if k.endswith("_answer")]
+        keys.sort()
+        for k in keys:
+            vraag = data.get(k.replace("_answer", "_label"), k)
+            antwoord = data.get(k, "")
+            vraag_antw_pairs.append((vraag, antwoord))
 
         # ===== PDF opbouwen =====
         pdf = ReportPDF()
@@ -128,7 +142,7 @@ def submit():
         pdf.kv("Telefoon:", data.get("phone", ""))
         pdf.ln(3)
 
-        # Intro (exact zoals in het formulier zichtbaar)
+        # Intro
         intro = data.get("introText", "")
         if intro:
             pdf.section_title("Introductie QuickScan")
@@ -139,103 +153,116 @@ def submit():
         # Tabelkop
         pdf.section_title("Vragen en antwoorden")
         pdf.set_font("Arial", "B", 11)
-        pdf.set_fill_color(62, 112, 255)     # blauw voor kolomkop
+        pdf.set_fill_color(62, 112, 255)
         pdf.set_text_color(255, 255, 255)
         pdf.cell(95, 8, "Vraag", border=1, ln=0, align="L", fill=True)
         pdf.cell(0, 8, "Antwoord / Cijfers (klant & AI)", border=1, ln=1, align="L", fill=True)
         pdf.set_text_color(0, 0, 0)
 
-        # Inhoud
         scores_ai = []
         scores_klant = []
 
-        for key in sorted([k for k in data.keys() if k.endswith("_answer")]):
-            label = data.get(key.replace("_answer", "_label"), key)
-            answer = data.get(key, "")
-            cust_score = data.get(key.replace("_answer", "_customer_score"), "")
-            try:
-                cust_score_int = int(cust_score)
-            except:
-                cust_score_int = 0
+        for vraag, antwoord in vraag_antw_pairs:
+            # klantcijfer ophalen (kan leeg zijn)
+            base_key = None
+            # reconstruct base_key door label te zoeken
+            for cand in ["_label"]:
+                pass
+            # Zoek bijbehorende prefix in data op basis van label
+            cust = "-"
+            for key in data.keys():
+                if key.endswith("_label") and data[key] == vraag:
+                    prefix = key[:-6]
+                    cust_val = data.get(prefix + "_customer_score", "")
+                    if str(cust_val).strip() != "":
+                        cust = str(cust_val)
+                        try:
+                            scores_klant.append(int(cust))
+                        except Exception:
+                            pass
+                    break
 
-            score_ai = ai_score(answer, label)
-
-            # bewaar voor totalen
-            if cust_score_int:
-                scores_klant.append(cust_score_int)
+            score_ai = ai_score(antwoord, vraag)
             scores_ai.append(score_ai)
 
-            # rij renderen
+            # render rij
             pdf.set_font("Arial", "B", 11)
-            pdf.multi_cell(95, 8, f"{label}", border=1)
+            pdf.multi_cell(95, 8, f"{vraag}", border=1)
             y_after = pdf.get_y()
-            x_after = pdf.get_x()
             pdf.set_xy(105, y_after - 8)
 
             pdf.set_font("Arial", "", 11)
-            pdf.multi_cell(0, 8, f"Antwoord: {answer}", border="LTR")
+            pdf.multi_cell(0, 8, f"Antwoord: {antwoord}", border="LTR")
             pdf.set_x(105)
-            pdf.set_fill_color(35, 49, 74)     # donkerblauwe balk
+            pdf.set_fill_color(35, 49, 74)
             pdf.set_text_color(255, 255, 255)
-            pdf.cell(45, 8, f"Cijfer klant: {cust_score_int if cust_score_int else '-'}", border="LBR", align="C", fill=True)
+            pdf.cell(45, 8, f"Cijfer klant: {cust}", border="LBR", align="C", fill=True)
             pdf.set_text_color(0, 0, 0)
             pdf.cell(0, 8, f"Cijfer AI: {score_ai}", border="LBR", ln=1)
             pdf.ln(1)
 
-        # Gemiddelden
         avg_ai = round(sum(scores_ai) / len(scores_ai), 2) if scores_ai else 0
         avg_cust = round(sum(scores_klant) / len(scores_klant), 2) if scores_klant else 0
 
         pdf.ln(2)
         pdf.section_title("Scores")
-        pdf.kv("Gemiddeld cijfer klant:", str(avg_cust))
+        pdf.kv("Gemiddeld cijfer klant:", str(avg_cust if scores_klant else "-"))
         pdf.kv("Gemiddeld cijfer AI:", str(avg_ai))
 
-        # AI-samenvatting
         pdf.ln(3)
         pdf.section_title("Samenvatting AI")
-        summary_text = ai_summary(data)
+        summary_text = ai_summary(vraag_antw_pairs)
         pdf.set_font("Arial", "", 11)
         pdf.multi_cell(0, 7, summary_text)
 
         filename = "quickscan.pdf"
         pdf.output(filename)
 
-        # ===== E-mail met PDF =====
-        msg = MIMEMultipart()
-        msg["From"] = os.getenv("EMAIL_USER")
-        msg["To"] = data.get("email")
-        msg["Cc"] = "quickscanveerenstael@gmail.com"
-        msg["Subject"] = "Resultaten Veerenstael Quick Scan"
+        # ===== E-mail (optioneel) =====
+        email_user = os.getenv("EMAIL_USER")
+        email_pass = os.getenv("EMAIL_PASS")
+        email_to = data.get("email", "")
 
-        body = (
-            f"Beste {data.get('name')},\n\n"
-            "In de bijlage staat het rapport van de QuickScan met per vraag het antwoord en de cijfers (klant & AI).\n\n"
-            f"Samenvatting:\n{summary_text}\n\n"
-            "Met vriendelijke groet,\nVeerenstael"
-        )
-        msg.attach(MIMEText(body))
+        email_sent = False
+        if email_user and email_pass and email_to:
+            try:
+                msg = MIMEMultipart()
+                msg["From"] = email_user
+                msg["To"] = email_to
+                msg["Cc"] = os.getenv("EMAIL_CC", "")
+                msg["Subject"] = "Resultaten Veerenstael Quick Scan"
 
-        with open(filename, "rb") as f:
-            attach = MIMEApplication(f.read(), _subtype="pdf")
-            attach.add_header("Content-Disposition", "attachment", filename=filename)
-            msg.attach(attach)
+                body = (
+                    f"Beste {data.get('name','')},\n\n"
+                    "In de bijlage staat het rapport van de QuickScan met per vraag het antwoord en de cijfers (klant & AI).\n\n"
+                    f"Samenvatting:\n{summary_text}\n\n"
+                    "Met vriendelijke groet,\nVeerenstael"
+                )
+                msg.attach(MIMEText(body))
 
-        smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+                with open(filename, "rb") as f:
+                    attach = MIMEApplication(f.read(), _subtype="pdf")
+                    attach.add_header("Content-Disposition", "attachment", filename=filename)
+                    msg.attach(attach)
 
-        s = smtplib.SMTP(smtp_server, smtp_port)
-        s.starttls()
-        s.login(os.getenv("EMAIL_USER"), os.getenv("EMAIL_PASS"))
-        s.send_message(msg)
-        s.quit()
+                smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+                smtp_port = int(os.getenv("SMTP_PORT", "587"))
 
-        app.logger.info("QuickScan succesvol verstuurd")
+                s = smtplib.SMTP(smtp_server, smtp_port)
+                s.starttls()
+                s.login(email_user, email_pass)
+                s.send_message(msg)
+                s.quit()
+                email_sent = True
+            except Exception as e:
+                app.logger.error(f"E-mail verzenden mislukt: {e}")
+
         return jsonify({
             "total_score_ai": avg_ai,
-            "total_score_customer": avg_cust,
-            "summary": summary_text
-        })
+            "total_score_customer": avg_cust if scores_klant else "",
+            "summary": summary_text,
+            "email_sent": email_sent
+        }), 200
 
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
