@@ -30,7 +30,15 @@ const QUESTIONS = {
   ]
 };
 
-// Dynamisch de vragen inladen
+// Helpers
+function createOption(v) {
+  const o = document.createElement("option");
+  o.value = String(v);
+  o.textContent = String(v);
+  return o;
+}
+
+// Dynamisch de vragen inladen (textarea + score 1-5 + hidden label voor PDF)
 const qContainer = document.getElementById("questions");
 Object.entries(QUESTIONS).forEach(([section, qs]) => {
   const h3 = document.createElement("h3");
@@ -40,20 +48,55 @@ Object.entries(QUESTIONS).forEach(([section, qs]) => {
   qs.forEach((q, i) => {
     const label = document.createElement("label");
     label.innerText = q;
+
+    // textarea voor toelichting
     const textarea = document.createElement("textarea");
-    textarea.name = `${section}_${i}`;
+    const baseName = `${section}_${i}`; // gebruikt als prefix
+    textarea.name = `${baseName}_answer`;
     textarea.rows = 3;
     textarea.style.width = "100%";
+
+    // hidden input met de originele vraagtekst zodat de backend de nette vraag kan tonen
+    const hiddenLabel = document.createElement("input");
+    hiddenLabel.type = "hidden";
+    hiddenLabel.name = `${baseName}_label`;
+    hiddenLabel.value = q;
+
+    // select voor klantcijfer 1-5
+    const scoreLabel = document.createElement("div");
+    scoreLabel.className = "score-row";
+    const scoreText = document.createElement("span");
+    scoreText.textContent = "Uw cijfer (1–5):";
+    const select = document.createElement("select");
+    select.name = `${baseName}_customer_score`;
+    select.required = false;
+    select.appendChild(new Option("-", ""));
+    [1,2,3,4,5].forEach(v => select.appendChild(createOption(v)));
+    scoreLabel.appendChild(scoreText);
+    scoreLabel.appendChild(select);
+
+    // plaatsen
     qContainer.appendChild(label);
     qContainer.appendChild(textarea);
+    qContainer.appendChild(hiddenLabel);
+    qContainer.appendChild(scoreLabel);
   });
 });
+
+// Intro-tekst ook meesturen zodat deze in de PDF komt
+const introEl = document.getElementById("intro");
 
 // Form versturen
 document.getElementById("quickscan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
+
+  // voeg de zichtbare intro HTML-tekst toe als platte tekst
+  if (introEl) {
+    const p = introEl.querySelector("p");
+    data.introText = p ? p.innerText : "";
+  }
 
   try {
     const res = await fetch("https://veerenstael-quickscan-backend.onrender.com/submit", {
@@ -69,7 +112,8 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     document.getElementById("result").innerHTML = `
       <div class="result-block">
         <h2>Resultaten QuickScan</h2>
-        <p><strong>Totaalscore:</strong> ${json.total_score}</p>
+        <p><strong>Gemiddeld cijfer AI:</strong> ${json.total_score_ai}</p>
+        <p><strong>Gemiddeld cijfer klant:</strong> ${json.total_score_customer}</p>
         <p><strong>Samenvatting:</strong><br/>${json.summary}</p>
         <p>Bedankt ${data.name}! Een PDF met de resultaten is verstuurd naar <strong>${data.email}</strong> (kopie ook naar Veerenstael).</p>
       </div>
@@ -84,4 +128,3 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     console.error(err);
   }
 });
-
