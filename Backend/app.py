@@ -29,7 +29,7 @@ if OPENAI_KEY:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-09-18-radar-v5"
+VERSION = "QS-2025-09-18-v6-no-dup-text"
 
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)        # kop en kolomkop
@@ -164,6 +164,49 @@ class ReportPDF(FPDF):
     def utext(self, text: str) -> str:
         return text if self.unicode_ok else sanitize_text_for_latin1(text)
 
+    # ---- HULP: aantal regels berekenen zonder te printen ----
+    def _nb_lines(self, w_mm: float, txt: str, bold: bool = False, size: int = 11, line_h: float = 7.0) -> int:
+        """
+        Schat het aantal regels dat multi_cell zou gebruiken voor txt binnen breedte w_mm.
+        Hiermee meten we hoogte zonder te renderen (voorkomt dubbele tekst).
+        """
+        # huidige font bewaren
+        prev_family, prev_style, prev_size_pt = self.font_family, self.font_style, self.font_size_pt
+        # set meet-font
+        self.ufont(size, bold)
+        # fpdf gebruikt mm; get_string_width geeft mm voor huidig font/size
+        text = self.utext(txt or "")
+        lines = 0
+        for paragraph in text.split("\n"):
+            words = paragraph.split(" ")
+            if not words:
+                lines += 1
+                continue
+            cur = ""
+            for w in words:
+                test = (cur + " " + w).strip()
+                if self.get_string_width(test) <= (w_mm):
+                    cur = test
+                else:
+                    # woord past niet; forceer nieuwe regel
+                    if cur == "":
+                        # extreem lang woord; breek hard per karakter
+                        chunk = ""
+                        for ch in w:
+                            if self.get_string_width(chunk + ch) <= (w_mm):
+                                chunk += ch
+                            else:
+                                lines += 1
+                                chunk = ch
+                        cur = chunk
+                    else:
+                        lines += 1
+                        cur = w
+            lines += 1  # laatste regel in de paragraaf
+        # font herstellen
+        self.set_font(prev_family, prev_style, prev_size_pt)
+        return max(lines, 1)
+
     def header(self):
         # Donkerblauwe balk + website-logo links
         self.set_fill_color(*DARKBLUE)
@@ -206,40 +249,41 @@ class ReportPDF(FPDF):
         self.set_text_color(0, 0, 0)
 
     def row_two_cols(self, left_text: str, right_answer: str, cust: str, ai: int):
-        # Eén uniforme rij zonder dubbele borders
+        """
+        Eén uniforme rij zonder dubbele borders:
+        - we berekenen hoogtes met _nb_lines (géén render)
+        - tekenen per kolom één rechthoek met dezelfde hoogte
+        - printen tekst en band precies één keer
+        """
         x0 = self.get_x()
         y0 = self.get_y()
         w1 = 95
         w2 = 105
         pad = 1.4
-        line_h = 7
-        band_h = 8
+        line_h = 7.0
+        band_h = 8.0
 
-        # hoogte meten
-        self.set_xy(x0, y0); self.ufont(11, bold=True)
-        self.multi_cell(w1, line_h, self.utext(left_text), border=0)
-        h_left = self.get_y() - y0
-
-        self.set_xy(x0 + w1, y0); self.ufont(11, bold=False)
-        self.multi_cell(w2, line_h, self.utext(f"Antwoord: {right_answer}"), border=0)
-        h_right = (self.get_y() - y0) + band_h
-
+        # hoogtes berekenen (LET OP: breedte binnen de padding)
+        h_left  = self._nb_lines(w1 - 2*pad, left_text, bold=True,  size=11, line_h=line_h) * line_h + 2*pad
+        h_right_txt = self._nb_lines(w2 - 2*pad, f"Antwoord: {right_answer}", bold=False, size=11, line_h=line_h) * line_h + 2*pad
+        h_right = h_right_txt + band_h
         h = max(h_left, h_right)
 
-        # kaders
+        # kaders tekenen (exact één keer)
         self.rect(x0, y0, w1, h)
         self.rect(x0 + w1, y0, w2, h)
 
-        # teksten
-        self.set_xy(x0 + pad, y0 + pad); self.ufont(11, bold=True)
+        # LINKS: vraag
+        self.set_xy(x0 + pad, y0 + pad)
+        self.ufont(11, bold=True)
         self.multi_cell(w1 - 2*pad, line_h, self.utext(left_text), border=0)
 
-        self.set_xy(x0 + w1 + pad, y0 + pad); self.ufont(11, bold=False)
-        start_y = self.get_y()
+        # RECHTS: antwoord
+        self.set_xy(x0 + w1 + pad, y0 + pad)
+        self.ufont(11, bold=False)
         self.multi_cell(w2 - 2*pad, line_h, self.utext(f"Antwoord: {right_answer}"), border=0)
-        _used_h = self.get_y() - start_y
 
-        # band
+        # RECHTS: cijferband onderaan
         y_band = y0 + h - band_h
         self.set_fill_color(*CELLBAND)
         self.rect(x0 + w1, y_band, w2, band_h, "F")
@@ -249,6 +293,7 @@ class ReportPDF(FPDF):
         self.cell(w2 - 45, 6, self.utext(f"Cijfer AI: {ai}"), ln=1, align="L")
         self.set_text_color(0, 0, 0)
 
+        # Volgende rij
         self.set_xy(x0, y0 + h)
 
 # ===== routes =====
@@ -272,8 +317,7 @@ def submit():
     try:
         data = request.json or {}
 
-        # --- items: (vraag, antwoord, sectie, klantcijfer-string)
-        # behoud de originele volgorde uit het formulier (niet sorteren)
+        # items: (vraag, antwoord, sectie, klantcijfer-string) — volgorde behouden
         items = []
         for k in [k for k in data.keys() if k.endswith("_answer")]:
             prefix = k[:-7]
@@ -325,7 +369,7 @@ def submit():
             grouped.setdefault(sect, []).append((vraag, antwoord, cust))
 
         # Keep-together drempel (ongeveer titel + header + 2 rijen)
-        MIN_SPACE_FOR_SECTION = 70  # mm (ruim genomen)
+        MIN_SPACE_FOR_SECTION = 70  # mm
 
         # Render per onderwerp
         radar_sections, radar_vals = [], []
@@ -387,7 +431,7 @@ def submit():
         pdf.ufont(11, bold=False)
         pdf.multi_cell(0, 7, pdf.utext(summary_text))
 
-        # Radarlabels netter maken (afbreken)
+        # Radargrafiek (labels licht ingebroken zodat ze niet over elkaar vallen)
         def wrap_label(lbl: str) -> str:
             l = lbl.strip()
             if l.lower() == "uitvoering onderhoud":
@@ -396,7 +440,6 @@ def submit():
                 return "Maintenance &\nReliability\nEngineering"
             return l
 
-        # Radargrafiek
         if radar_sections:
             img_path = "radar.png"
             try:
