@@ -1,4 +1,14 @@
-// De vragen per categorie
+// ===== Config: automatische backend-detectie =====
+// - Als QUICKSCAN_BACKEND op window staat, gebruik die.
+// - Anders: bij localhost -> http://127.0.0.1:5000
+// - Anders: gebruik relatieve pad (zelfde host als frontend).
+const BACKEND_URL =
+  (typeof window !== "undefined" && window.QUICKSCAN_BACKEND) ||
+  (location.hostname === "localhost" || location.hostname === "127.0.0.1"
+    ? "http://127.0.0.1:5000"
+    : "");
+
+// ===== Vragen =====
 const QUESTIONS = {
   "Asset Management Strategie": [
     "Zijn rollen, verantwoordelijkheden en bevoegdheden binnen onderhoudsprocessen helder belegd (bijv. tussen opdrachtgever, werkvoorbereider, coördinator en monteurs)?",
@@ -38,7 +48,7 @@ function createOption(v) {
   return o;
 }
 
-// Dynamisch de vragen inladen (textarea + score 1-5 + hidden label voor PDF)
+// Dynamisch de vragen inladen
 const qContainer = document.getElementById("questions");
 Object.entries(QUESTIONS).forEach(([section, qs]) => {
   const h3 = document.createElement("h3");
@@ -49,33 +59,28 @@ Object.entries(QUESTIONS).forEach(([section, qs]) => {
     const label = document.createElement("label");
     label.innerText = q;
 
-    // textarea voor toelichting
     const textarea = document.createElement("textarea");
-    const baseName = `${section}_${i}`; // gebruikt als prefix
+    const baseName = `${section}_${i}`;
     textarea.name = `${baseName}_answer`;
     textarea.rows = 3;
     textarea.style.width = "100%";
 
-    // hidden input met de originele vraagtekst zodat de backend de nette vraag kan tonen
     const hiddenLabel = document.createElement("input");
     hiddenLabel.type = "hidden";
     hiddenLabel.name = `${baseName}_label`;
     hiddenLabel.value = q;
 
-    // select voor klantcijfer 1-5
     const scoreLabel = document.createElement("div");
     scoreLabel.className = "score-row";
     const scoreText = document.createElement("span");
     scoreText.textContent = "Uw cijfer (1–5):";
     const select = document.createElement("select");
     select.name = `${baseName}_customer_score`;
-    select.required = false;
     select.appendChild(new Option("-", ""));
     [1,2,3,4,5].forEach(v => select.appendChild(createOption(v)));
     scoreLabel.appendChild(scoreText);
     scoreLabel.appendChild(select);
 
-    // plaatsen
     qContainer.appendChild(label);
     qContainer.appendChild(textarea);
     qContainer.appendChild(hiddenLabel);
@@ -83,48 +88,58 @@ Object.entries(QUESTIONS).forEach(([section, qs]) => {
   });
 });
 
-// Intro-tekst ook meesturen zodat deze in de PDF komt
 const introEl = document.getElementById("intro");
 
-// Form versturen
+function showError(where, msg) {
+  document.getElementById("result").innerHTML = `
+    <div class="result-block">
+      <h2>Er ging iets mis</h2>
+      <p>${where ? `<strong>${where}</strong><br/>` : ""}${msg}</p>
+    </div>
+  `;
+}
+
 document.getElementById("quickscan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  // voeg de zichtbare intro HTML-tekst toe als platte tekst
   if (introEl) {
     const p = introEl.querySelector("p");
     data.introText = p ? p.innerText : "";
   }
 
   try {
-    const res = await fetch("https://veerenstael-quickscan-backend.onrender.com/submit", {
+    const res = await fetch(`${BACKEND_URL}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
 
-    if (!res.ok) throw new Error("Backend niet bereikbaar");
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = {};
+    }
 
-    const json = await res.json();
+    if (!res.ok) {
+      const msg = payload && payload.error ? payload.error : `HTTP ${res.status}`;
+      showError("Backend-response", msg);
+      return;
+    }
 
     document.getElementById("result").innerHTML = `
       <div class="result-block">
         <h2>Resultaten QuickScan</h2>
-        <p><strong>Gemiddeld cijfer AI:</strong> ${json.total_score_ai}</p>
-        <p><strong>Gemiddeld cijfer klant:</strong> ${json.total_score_customer}</p>
-        <p><strong>Samenvatting:</strong><br/>${json.summary}</p>
-        <p>Bedankt ${data.name}! Een PDF met de resultaten is verstuurd naar <strong>${data.email}</strong> (kopie ook naar Veerenstael).</p>
+        <p><strong>Gemiddeld cijfer AI:</strong> ${payload.total_score_ai ?? "-"}</p>
+        <p><strong>Gemiddeld cijfer klant:</strong> ${payload.total_score_customer || "-"}</p>
+        <p><strong>Samenvatting:</strong><br/>${payload.summary || "-"}</p>
+        <p>${payload.email_sent ? "Het PDF-rapport is per e-mail verzonden." : "E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}</p>
       </div>
     `;
   } catch (err) {
-    document.getElementById("result").innerHTML = `
-      <div class="result-block">
-        <h2>Er ging iets mis</h2>
-        <p>De QuickScan kon niet worden verstuurd. Controleer of de backend bereikbaar is en probeer opnieuw.</p>
-      </div>
-    `;
+    showError("Netwerkfout", String(err));
     console.error(err);
   }
 });
