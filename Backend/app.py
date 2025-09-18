@@ -29,7 +29,7 @@ if OPENAI_KEY:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-09-18-v6-no-dup-text"
+VERSION = "QS-2025-09-18-v7-header-inbar-epw"
 
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)        # kop en kolomkop
@@ -166,15 +166,8 @@ class ReportPDF(FPDF):
 
     # ---- HULP: aantal regels berekenen zonder te printen ----
     def _nb_lines(self, w_mm: float, txt: str, bold: bool = False, size: int = 11, line_h: float = 7.0) -> int:
-        """
-        Schat het aantal regels dat multi_cell zou gebruiken voor txt binnen breedte w_mm.
-        Hiermee meten we hoogte zonder te renderen (voorkomt dubbele tekst).
-        """
-        # huidige font bewaren
         prev_family, prev_style, prev_size_pt = self.font_family, self.font_style, self.font_size_pt
-        # set meet-font
         self.ufont(size, bold)
-        # fpdf gebruikt mm; get_string_width geeft mm voor huidig font/size
         text = self.utext(txt or "")
         lines = 0
         for paragraph in text.split("\n"):
@@ -185,15 +178,13 @@ class ReportPDF(FPDF):
             cur = ""
             for w in words:
                 test = (cur + " " + w).strip()
-                if self.get_string_width(test) <= (w_mm):
+                if self.get_string_width(test) <= w_mm:
                     cur = test
                 else:
-                    # woord past niet; forceer nieuwe regel
                     if cur == "":
-                        # extreem lang woord; breek hard per karakter
                         chunk = ""
                         for ch in w:
-                            if self.get_string_width(chunk + ch) <= (w_mm):
+                            if self.get_string_width(chunk + ch) <= w_mm:
                                 chunk += ch
                             else:
                                 lines += 1
@@ -202,21 +193,32 @@ class ReportPDF(FPDF):
                     else:
                         lines += 1
                         cur = w
-            lines += 1  # laatste regel in de paragraaf
-        # font herstellen
+            lines += 1
         self.set_font(prev_family, prev_style, prev_size_pt)
         return max(lines, 1)
 
     def header(self):
-        # Donkerblauwe balk + website-logo links
+        # Donkerblauwe balk
         self.set_fill_color(*DARKBLUE)
         self.rect(0, 0, 210, 24, "F")
+
+        # Logo links
         logo_path = ensure_logo_file()
         if logo_path:
             try:
                 self.image(logo_path, x=10, y=5, h=10)
             except Exception:
                 pass
+
+        # Titel in de balk (midden, wit): "Quick Scan"
+        self.set_text_color(255, 255, 255)
+        self.ufont(14, bold=True)
+        # volledige paginabreedte, y=7, hoogte 10
+        self.set_xy(0, 7)
+        self.cell(0, 10, self.utext("Quick Scan"), align="C")
+        self.set_text_color(0, 0, 0)
+
+        # cursor onder de balk
         self.set_y(26)
 
     def footer(self):
@@ -240,60 +242,70 @@ class ReportPDF(FPDF):
         self.ufont(11, bold=True)
         self.cell(0, 7, self.utext(v), ln=True)
 
+    def _col_widths(self):
+        """Dynamische kolombreedtes binnen de effectieve pagina­breedte (epw)."""
+        try:
+            total = self.epw  # fpdf2 helper for effective page width
+        except AttributeError:
+            total = self.w - self.l_margin - self.r_margin
+        w1 = total * 0.48
+        w2 = total - w1
+        return w1, w2
+
     def table_header(self):
+        w1, w2 = self._col_widths()
         self.ufont(11, bold=True)
         self.set_fill_color(*DARKBLUE)
         self.set_text_color(255, 255, 255)
-        self.cell(95, 8, self.utext("Vraag"), border=1, ln=0, align="L", fill=True)
-        self.cell(0, 8, self.utext("Antwoord / Cijfers (klant & AI)"), border=1, ln=1, align="L", fill=True)
+        self.cell(w1, 8, self.utext("Vraag"), border=1, ln=0, align="L", fill=True)
+        self.cell(w2, 8, self.utext("Antwoord / Cijfers (klant & AI)"), border=1, ln=1, align="L", fill=True)
         self.set_text_color(0, 0, 0)
 
     def row_two_cols(self, left_text: str, right_answer: str, cust: str, ai: int):
         """
-        Eén uniforme rij zonder dubbele borders:
-        - we berekenen hoogtes met _nb_lines (géén render)
-        - tekenen per kolom één rechthoek met dezelfde hoogte
-        - printen tekst en band precies één keer
+        Eén uniforme rij zonder dubbele borders, binnen de marges.
         """
         x0 = self.get_x()
         y0 = self.get_y()
-        w1 = 95
-        w2 = 105
+        w1, w2 = self._col_widths()
         pad = 1.4
         line_h = 7.0
         band_h = 8.0
 
-        # hoogtes berekenen (LET OP: breedte binnen de padding)
+        # hoogtes (zonder render)
         h_left  = self._nb_lines(w1 - 2*pad, left_text, bold=True,  size=11, line_h=line_h) * line_h + 2*pad
         h_right_txt = self._nb_lines(w2 - 2*pad, f"Antwoord: {right_answer}", bold=False, size=11, line_h=line_h) * line_h + 2*pad
         h_right = h_right_txt + band_h
         h = max(h_left, h_right)
 
-        # kaders tekenen (exact één keer)
+        # kaders
         self.rect(x0, y0, w1, h)
         self.rect(x0 + w1, y0, w2, h)
 
-        # LINKS: vraag
+        # links
         self.set_xy(x0 + pad, y0 + pad)
         self.ufont(11, bold=True)
         self.multi_cell(w1 - 2*pad, line_h, self.utext(left_text), border=0)
 
-        # RECHTS: antwoord
+        # rechts: antwoord
         self.set_xy(x0 + w1 + pad, y0 + pad)
         self.ufont(11, bold=False)
         self.multi_cell(w2 - 2*pad, line_h, self.utext(f"Antwoord: {right_answer}"), border=0)
 
-        # RECHTS: cijferband onderaan
+        # rechts: band onderin
         y_band = y0 + h - band_h
         self.set_fill_color(*CELLBAND)
         self.rect(x0 + w1, y_band, w2, band_h, "F")
         self.set_text_color(255, 255, 255)
         self.set_xy(x0 + w1 + pad, y_band + (band_h - 6) / 2)
-        self.cell(45 - pad, 6, self.utext(f"Cijfer klant: {cust}"), ln=0, align="C")
-        self.cell(w2 - 45, 6, self.utext(f"Cijfer AI: {ai}"), ln=1, align="L")
+
+        # verdeel band in 2 delen ~ 42% / 58%
+        kl_w = max(40, w2 * 0.42)
+        self.cell(kl_w - pad, 6, self.utext(f"Cijfer klant: {cust}"), ln=0, align="C")
+        self.cell(w2 - kl_w, 6, self.utext(f"Cijfer AI: {ai}"), ln=1, align="L")
         self.set_text_color(0, 0, 0)
 
-        # Volgende rij
+        # volgende rij
         self.set_xy(x0, y0 + h)
 
 # ===== routes =====
@@ -335,14 +347,11 @@ def submit():
 
         # PDF
         pdf = ReportPDF()
+        # marges (standaard is prima; epw houdt hier rekening mee)
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # Titel (onder balk)
-        pdf.ufont(16, bold=True)
-        pdf.set_text_color(184, 199, 224)
-        pdf.cell(0, 10, pdf.utext("Veerenstael Quick Scan"), ln=True, align="C")
-        pdf.set_text_color(0, 0, 0)
+        # (Titel staat nu al in de headerbalk)
         pdf.ln(2)
 
         # Metadata
@@ -431,7 +440,7 @@ def submit():
         pdf.ufont(11, bold=False)
         pdf.multi_cell(0, 7, pdf.utext(summary_text))
 
-        # Radargrafiek (labels licht ingebroken zodat ze niet over elkaar vallen)
+        # ---- Radar op nieuwe pagina + titel aangepast ----
         def wrap_label(lbl: str) -> str:
             l = lbl.strip()
             if l.lower() == "uitvoering onderhoud":
@@ -441,6 +450,7 @@ def submit():
             return l
 
         if radar_sections:
+            pdf.add_page()  # nieuwe pagina zodat titel + afbeelding bij elkaar staan
             img_path = "radar.png"
             try:
                 labels = [wrap_label(s) for s in radar_sections]
@@ -470,8 +480,7 @@ def submit():
                 fig.savefig(img_path, dpi=180, bbox_inches="tight")
                 plt.close(fig)
 
-                pdf.ln(4)
-                pdf.section_title("Radar – gemiddelde score per onderwerp")
+                pdf.section_title("Gemiddelde score per onderwerp")
                 pdf.image(img_path, w=180)
             except Exception as e:
                 app.logger.error(f"Kon radargrafiek niet maken: {e}")
