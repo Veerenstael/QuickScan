@@ -67,7 +67,7 @@ form label {
   color: #e0e6f0;
 }
 
-form input, form textarea {
+form input, form textarea, form select {
   width: 100%;
   background: #1a2230;
   color: #e0e0e0;
@@ -80,7 +80,7 @@ form input, form textarea {
   transition: box-shadow 0.2s;
 }
 
-form input:focus, form textarea:focus {
+form input:focus, form textarea:focus, form select:focus {
   outline: 2px solid #3e70ff;
 }
 
@@ -92,6 +92,19 @@ h3 {
   font-size: 1.2rem;
   border-bottom: 1px solid #3e70ff44;
   padding-bottom: 4px;
+}
+
+/* Score rij 1–5 */
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+.score-row span {
+  color: #b8c7e0;
+  font-size: 0.95rem;
 }
 
 /* Knoppen */
@@ -144,4 +157,17 @@ button.reset-btn:hover {
 .result-block p {
   color: #e0e6f0;
   line-height: 1.5;
+}
+
+/* Intro blok */
+.intro {
+  background: #23314a;
+  border: 1px solid #3e70ff44;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 10px;
+}
+.intro p {
+  margin: 0;
+  color: #e0e6f0;
 }
