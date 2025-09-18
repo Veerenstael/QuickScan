@@ -29,6 +29,8 @@ if OPENAI_KEY:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+VERSION = "QS-2025-09-18-radar-v5"
+
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)        # kop en kolomkop
 ACCENT   = (19, 209, 124)      # sectietitels
@@ -80,7 +82,6 @@ def sanitize_text_for_latin1(txt: str) -> str:
         return txt
 
 # ---------- Logo ----------
-# Gebruik LOGO_URL als die gezet is, anders de boxed website-variant; als dat faalt, fallback op favicon.png lokaal.
 DEFAULT_LOGO_URL = os.getenv(
     "LOGO_URL",
     "https://www.veerenstael.nl/wp-content/uploads/2020/06/logo-veerenstael-wit.png"
@@ -97,7 +98,6 @@ def ensure_logo_file() -> str | None:
             f.write(r.content)
         return LOCAL_LOGO_FILE
     except Exception:
-        # Fallback: lokale bestandsnamen proberen
         for p in ["favicon.png", "logo.png", "static/favicon.png"]:
             if os.path.exists(p):
                 return p
@@ -171,12 +171,19 @@ class ReportPDF(FPDF):
         logo_path = ensure_logo_file()
         if logo_path:
             try:
-                # Hoogte 10mm, behoud aspect
                 self.image(logo_path, x=10, y=5, h=10)
             except Exception:
                 pass
-        # Titel rechts gecentreerd
         self.set_y(26)
+
+    def footer(self):
+        self.set_y(-12)
+        try:
+            self.ufont(8, bold=False)
+        except Exception:
+            self.set_font("Arial", "", 8)
+        self.set_text_color(120, 120, 120)
+        self.cell(0, 8, f"Veerenstael Quick Scan · {VERSION}", align="C")
 
     def section_title(self, txt):
         self.ufont(12, bold=True)
@@ -191,7 +198,6 @@ class ReportPDF(FPDF):
         self.cell(0, 7, self.utext(v), ln=True)
 
     def table_header(self):
-        # Kolomkop in hetzelfde donkerblauw als de header
         self.ufont(11, bold=True)
         self.set_fill_color(*DARKBLUE)
         self.set_text_color(255, 255, 255)
@@ -200,51 +206,59 @@ class ReportPDF(FPDF):
         self.set_text_color(0, 0, 0)
 
     def row_two_cols(self, left_text: str, right_answer: str, cust: str, ai: int):
-        """
-        Nette uitlijning: vraag en antwoord op gelijke hoogte.
-        Bepaal hoogte per kolom en neem de max als rijhoogte.
-        """
+        # Eén uniforme rij zonder dubbele borders
         x0 = self.get_x()
         y0 = self.get_y()
         w1 = 95
-        w2 = 105  # resterend
+        w2 = 105
+        pad = 1.4
+        line_h = 7
+        band_h = 8
 
-        # Linker kolom (vraag) – meet hoogte
-        self.ufont(11, bold=True)
-        self.multi_cell(w1, 7, self.utext(left_text), border=1)
-        y1 = self.get_y()
-        h1 = y1 - y0
+        # hoogte meten
+        self.set_xy(x0, y0); self.ufont(11, bold=True)
+        self.multi_cell(w1, line_h, self.utext(left_text), border=0)
+        h_left = self.get_y() - y0
 
-        # Rechter kolom – meet hoogte
-        self.set_xy(x0 + w1, y0)
-        self.ufont(11, bold=False)
-        # Antwoord
-        self.multi_cell(w2, 7, self.utext(f"Antwoord: {right_answer}"), border="LTR")
-        y2_mid = self.get_y()
-        # Band met cijfers
-        self.set_x(x0 + w1)
+        self.set_xy(x0 + w1, y0); self.ufont(11, bold=False)
+        self.multi_cell(w2, line_h, self.utext(f"Antwoord: {right_answer}"), border=0)
+        h_right = (self.get_y() - y0) + band_h
+
+        h = max(h_left, h_right)
+
+        # kaders
+        self.rect(x0, y0, w1, h)
+        self.rect(x0 + w1, y0, w2, h)
+
+        # teksten
+        self.set_xy(x0 + pad, y0 + pad); self.ufont(11, bold=True)
+        self.multi_cell(w1 - 2*pad, line_h, self.utext(left_text), border=0)
+
+        self.set_xy(x0 + w1 + pad, y0 + pad); self.ufont(11, bold=False)
+        start_y = self.get_y()
+        self.multi_cell(w2 - 2*pad, line_h, self.utext(f"Antwoord: {right_answer}"), border=0)
+        _used_h = self.get_y() - start_y
+
+        # band
+        y_band = y0 + h - band_h
         self.set_fill_color(*CELLBAND)
+        self.rect(x0 + w1, y_band, w2, band_h, "F")
         self.set_text_color(255, 255, 255)
-        self.cell(45, 8, self.utext(f"Cijfer klant: {cust}"), border="LBR", align="C", fill=True)
+        self.set_xy(x0 + w1 + pad, y_band + (band_h - 6) / 2)
+        self.cell(45 - pad, 6, self.utext(f"Cijfer klant: {cust}"), ln=0, align="C")
+        self.cell(w2 - 45, 6, self.utext(f"Cijfer AI: {ai}"), ln=1, align="L")
         self.set_text_color(0, 0, 0)
-        self.cell(w2 - 45, 8, self.utext(f"Cijfer AI: {ai}"), border="LBR", ln=1)
-        y2 = self.get_y()
-        h2 = y2 - y0
 
-        # Breng beide kolommen op gelijke hoogte
-        hmax = max(h1, h2)
-        if h1 < hmax:
-            # Trek extra kaderlijn om linker kolom optisch te vullen
-            self.set_xy(x0, y0 + h1)
-            self.cell(w1, hmax - h1, "", border=1, ln=1)
-        else:
-            # Cursor op einde rij
-            self.set_xy(x0, y0 + hmax)
+        self.set_xy(x0, y0 + h)
 
 # ===== routes =====
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
+
+@app.route("/version", methods=["GET"])
+def version():
+    return jsonify({"version": VERSION}), 200
 
 @app.route("/", methods=["GET"])
 def home():
@@ -258,18 +272,14 @@ def submit():
     try:
         data = request.json or {}
 
-        # a) verzamel alle items en leid 'onderwerp' af uit de key prefix: SECTION_i_answer
-        #    keys bevatten de sectienaam (zoals in de frontend: `${section}_${i}_answer`)
-        items = []  # tuples: (vraag, antwoord, onderwerp, cust_score, ai_score)
-        # We willen de originele volgorde aanhouden; sorteert op key werkt omdat prefix dat bewaart
-        answer_keys = sorted(k for k in data.keys() if k.endswith("_answer"))
-        for k in answer_keys:
-            prefix = k[:-7]  # strip "_answer"
+        # --- items: (vraag, antwoord, sectie, klantcijfer-string)
+        # behoud de originele volgorde uit het formulier (niet sorteren)
+        items = []
+        for k in [k for k in data.keys() if k.endswith("_answer")]:
+            prefix = k[:-7]
             vraag = data.get(prefix + "_label", k)
             antwoord = data.get(k, "")
-            # onderwerp uit prefix (alles tot laatste "_")
             sect = prefix.rsplit("_", 1)[0]
-            # klantcijfer
             cust_raw = data.get(prefix + "_customer_score", "")
             cust = "-"
             try:
@@ -279,7 +289,7 @@ def submit():
                 cust = "-"
             items.append((vraag, antwoord, sect, cust))
 
-        # b) bouw PDF
+        # PDF
         pdf = ReportPDF()
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -308,21 +318,26 @@ def submit():
             pdf.multi_cell(0, 7, pdf.utext(intro))
             pdf.ln(2)
 
-        # c) Vragen per onderwerp, steeds twee vragen per onderwerp
-        pdf.section_title("Vragen en antwoorden")
-
-        # groepeer per onderwerp
-        from collections import OrderedDict, defaultdict
+        # Groeperen per onderwerp (in volgorde)
+        from collections import OrderedDict
         grouped = OrderedDict()
         for vraag, antwoord, sect, cust in items:
             grouped.setdefault(sect, []).append((vraag, antwoord, cust))
 
-        # scoreregistratie voor radargrafiek
-        radar_sections = []
-        radar_vals = []
+        # Keep-together drempel (ongeveer titel + header + 2 rijen)
+        MIN_SPACE_FOR_SECTION = 70  # mm (ruim genomen)
 
-        # renderen
+        # Render per onderwerp
+        radar_sections, radar_vals = [], []
+        all_ai, all_cust = [], []
+
+        pdf.section_title("Vragen en antwoorden")
         for sect, rows in grouped.items():
+            # keep-together: als te weinig ruimte rest, nieuwe pagina vóór het onderwerp
+            remaining = pdf.h - pdf.b_margin - pdf.get_y()
+            if remaining < MIN_SPACE_FOR_SECTION:
+                pdf.add_page()
+
             # onderwerp-kop
             pdf.ufont(12, bold=True)
             pdf.set_text_color(*DARKBLUE)
@@ -332,40 +347,30 @@ def submit():
             # kolomkop
             pdf.table_header()
 
-            # twee vragen per onderwerp (zoals jouw formulier)
             ai_scores_for_avg = []
             cust_scores_for_avg = []
 
             for (vraag, antwoord, cust) in rows:
                 ai_val = ai_score(antwoord, vraag)
+                ai_scores_for_avg.append(ai_val)
+                all_ai.append(ai_val)
                 if cust != "-":
                     try:
-                        cust_scores_for_avg.append(int(cust))
+                        cust_int = int(cust)
+                        cust_scores_for_avg.append(cust_int)
+                        all_cust.append(cust_int)
                     except Exception:
                         pass
-                ai_scores_for_avg.append(ai_val)
 
                 pdf.row_two_cols(vraag, antwoord, cust, ai_val)
 
-            # gemiddelde per onderwerp (vier cijfers: 2x klant + 2x AI)
-            # als er minder waarden zijn, neem het gemiddelde van wat er is
             all_vals = ai_scores_for_avg + cust_scores_for_avg
             subj_avg = round(sum(all_vals)/len(all_vals), 2) if all_vals else 0
             radar_sections.append(sect)
             radar_vals.append(subj_avg)
             pdf.ln(1)
 
-        # d) Scores-overzicht
-        all_ai = []
-        all_cust = []
-        for sect, rows in grouped.items():
-            for (vraag, antwoord, cust) in rows:
-                if cust != "-":
-                    try:
-                        all_cust.append(int(cust))
-                    except Exception:
-                        pass
-                all_ai.append(ai_score(antwoord, vraag))
+        # Scores-overzicht
         avg_ai = round(sum(all_ai)/len(all_ai), 2) if all_ai else 0
         avg_cust = round(sum(all_cust)/len(all_cust), 2) if all_cust else 0
 
@@ -374,23 +379,30 @@ def submit():
         pdf.kv("Gemiddeld cijfer klant:", str(avg_cust if all_cust else "-"))
         pdf.kv("Gemiddeld cijfer AI:", str(avg_ai))
 
-        # e) Samenvatting
-        pairs_for_summary = [(v, a, s) for (v, a, s, _c) in [(it[0], it[1], it[2], it[3]) for it in items]]
+        # Samenvatting
+        pairs_for_summary = [(v, a, s) for (v, a, s, _c) in items]
         summary_text = ai_summary(pairs_for_summary)
         pdf.ln(3)
         pdf.section_title("Samenvatting AI")
         pdf.ufont(11, bold=False)
         pdf.multi_cell(0, 7, pdf.utext(summary_text))
 
-        # f) Radargrafiek onderaan – gemiddeld per onderwerp
+        # Radarlabels netter maken (afbreken)
+        def wrap_label(lbl: str) -> str:
+            l = lbl.strip()
+            if l.lower() == "uitvoering onderhoud":
+                return "Uitvoering\nonderhoud"
+            if l == "Maintenance & Reliability Engineering":
+                return "Maintenance &\nReliability\nEngineering"
+            return l
+
+        # Radargrafiek
         if radar_sections:
             img_path = "radar.png"
             try:
-                # Data voorbereiden
-                labels = radar_sections
+                labels = [wrap_label(s) for s in radar_sections]
                 values = radar_vals
                 N = len(labels)
-                # sluit de polygon
                 values_cycle = values + values[:1]
                 angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
                 angles += angles[:1]
@@ -417,16 +429,15 @@ def submit():
 
                 pdf.ln(4)
                 pdf.section_title("Radar – gemiddelde score per onderwerp")
-                # plaats afbeelding, maximale breedte 180mm
                 pdf.image(img_path, w=180)
             except Exception as e:
                 app.logger.error(f"Kon radargrafiek niet maken: {e}")
 
-        # g) PDF opslaan
+        # PDF opslaan
         filename = "quickscan.pdf"
         pdf.output(filename)
 
-        # h) E-mail (optioneel)
+        # E-mail (optioneel)
         email_user = os.getenv("EMAIL_USER")
         email_pass = os.getenv("EMAIL_PASS")
         email_to = data.get("email", "")
