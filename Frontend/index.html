@@ -5,10 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Veerenstael Quick Scan</title>
   <link rel="stylesheet" href="./style.css"/>
-
   <link rel="icon" href="favicon.png" type="image/png">
 </head>
 <body>
+  <!-- Zet HIER je Render backend-URL neer -->
+  <!-- Vervang <JOUW-RENDER-URL> door jouw live backend, bv:
+       https://veerenstael-quickscan-backend.onrender.com -->
+  <script>
+    window.QUICKSCAN_BACKEND = "https://<JOUW-RENDER-URL>";
+  </script>
+
   <div class="dashboard-bg">
     <div class="logo-header">
       <img src="https://www.veerenstael.nl/wp-content/uploads/2020/06/logo-veerenstael-wit.png" 
@@ -36,7 +42,7 @@
         <label>Telefoonnummer</label>
         <input type="text" name="phone" />
 
-        <!-- Introductie: tussen telefoonnummer en de vragen -->
+        <!-- Introductie -->
         <div id="intro" class="intro">
           <h3>Introductie QuickScan</h3>
           <p>
