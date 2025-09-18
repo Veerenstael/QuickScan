@@ -8,13 +8,10 @@
   <link rel="icon" href="favicon.png" type="image/png">
 </head>
 <body>
-  <!-- Zet HIER je Render backend-URL neer -->
-  <!-- Vervang <JOUW-RENDER-URL> door jouw live backend, bv:
-       https://veerenstael-quickscan-backend.onrender.com -->
   <script>
-    window.QUICKSCAN_BACKEND = "https://<JOUW-RENDER-URL>";
-  </script>
-
+  // Let op: GEEN trailing slash
+  window.QUICKSCAN_BACKEND = "https://veerenstael-quickscan-backend.onrender.com";
+</script>
   <div class="dashboard-bg">
     <div class="logo-header">
       <img src="https://www.veerenstael.nl/wp-content/uploads/2020/06/logo-veerenstael-wit.png" 
@@ -72,3 +69,4 @@
   <script src="./script.js"></script>
 </body>
 </html>
+
