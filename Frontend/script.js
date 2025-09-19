@@ -23,7 +23,6 @@ function resolveBackendBase() {
 
   // valideer URL
   try {
-    // Als dit faalt zat er iets als "https://" of "veerenstael..." zonder schema
     const u = new URL(base);
     if (!u.protocol.startsWith("http")) throw new Error("Ongeldig protocol");
   } catch (e) {
@@ -41,11 +40,11 @@ try {
   // Toon nette melding in de UI; formulier blijft zichtbaar
   const res = document.getElementById("result");
   if (res) {
+    res.removeAttribute("hidden");
+    res.className = "result-block";
     res.innerHTML = `
-      <div class="result-block">
-        <h2>Er ging iets mis</h2>
-        <p><strong>Configuratiefout</strong><br/>${e.message}</p>
-      </div>
+      <h2>Er ging iets mis</h2>
+      <p><strong>Configuratiefout</strong><br/>${e.message}</p>
     `;
   }
   // Laat een veilige default staan zodat de rest van het script blijft werken
@@ -84,7 +83,7 @@ const QUESTIONS = {
   ]
 };
 
-// Helpers
+// ===== Helpers =====
 function createOption(v) {
   const o = document.createElement("option");
   o.value = String(v);
@@ -92,7 +91,70 @@ function createOption(v) {
   return o;
 }
 
-// Dynamisch de vragen inladen (textarea + score 1–5 + hidden label)
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.substring(2), v);
+    else if (k === "html") node.innerHTML = v;
+    else node.setAttribute(k, v);
+  }
+  for (const child of children) {
+    if (child == null) continue;
+    node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return node;
+}
+
+// Render "Uw cijfer:" met 5 klikbare bolletjes (1..5)
+function scoreDots(name, initial) {
+  const wrap = el("div", { class: "score-dots" });
+  const label = el("span", { class: "label" }, "Uw cijfer:");
+  const dots = el("div", { class: "dots" });
+
+  for (let i = 1; i <= 5; i++) {
+    const id = `${name}_${i}`;
+    const input = el("input", {
+      type: "radio",
+      id,
+      name,
+      value: String(i),
+      ...(String(initial) === String(i) ? { checked: "checked" } : {})
+    });
+    const dot = el("label", { class: "dot", for: id });
+    dots.appendChild(input);
+    dots.appendChild(dot);
+  }
+
+  wrap.appendChild(label);
+  wrap.appendChild(dots);
+  return wrap;
+}
+
+// Maak één vraagblok (label + textarea + scorebolletjes + hidden label)
+function makeQuestion(section, qText, index) {
+  const baseName = `${section}_${index}`;
+
+  const label = document.createElement("label");
+  label.innerText = qText;
+
+  const textarea = document.createElement("textarea");
+  textarea.name = `${baseName}_answer`;
+  textarea.rows = 3;
+  textarea.style.width = "100%";
+
+  const hiddenLabel = document.createElement("input");
+  hiddenLabel.type = "hidden";
+  hiddenLabel.name = `${baseName}_label`;
+  hiddenLabel.value = qText;
+
+  const scoreName = `${baseName}_customer_score`;
+  const dots = scoreDots(scoreName, "");
+
+  return [label, textarea, hiddenLabel, dots];
+}
+
+// Dynamisch de vragen inladen
 const qContainer = document.getElementById("questions");
 Object.entries(QUESTIONS).forEach(([section, qs]) => {
   const h3 = document.createElement("h3");
@@ -100,48 +162,20 @@ Object.entries(QUESTIONS).forEach(([section, qs]) => {
   qContainer.appendChild(h3);
 
   qs.forEach((q, i) => {
-    const label = document.createElement("label");
-    label.innerText = q;
-
-    const textarea = document.createElement("textarea");
-    const baseName = `${section}_${i}`;
-    textarea.name = `${baseName}_answer`;
-    textarea.rows = 3;
-    textarea.style.width = "100%";
-
-    const hiddenLabel = document.createElement("input");
-    hiddenLabel.type = "hidden";
-    hiddenLabel.name = `${baseName}_label`;
-    hiddenLabel.value = q;
-
-    const scoreLabel = document.createElement("div");
-    scoreLabel.className = "score-row";
-    const scoreText = document.createElement("span");
-    scoreText.textContent = "Uw cijfer (1–5):";
-    const select = document.createElement("select");
-    select.name = `${baseName}_customer_score`;
-    select.appendChild(new Option("-", ""));
-    [1,2,3,4,5].forEach(v => select.appendChild(createOption(v)));
-    scoreLabel.appendChild(scoreText);
-    scoreLabel.appendChild(select);
-
-    qContainer.appendChild(label);
-    qContainer.appendChild(textarea);
-    qContainer.appendChild(hiddenLabel);
-    qContainer.appendChild(scoreLabel);
+    const parts = makeQuestion(section, q, i);
+    parts.forEach(elm => qContainer.appendChild(elm));
   });
 });
 
-// Intro-tekst ook meesturen zodat deze in de PDF komt
-const introEl = document.getElementById("intro");
-
 // UI error helper
 function showError(where, msg) {
-  document.getElementById("result").innerHTML = `
-    <div class="result-block">
-      <h2>Er ging iets mis</h2>
-      <p>${where ? `<strong>${where}</strong><br/>` : ""}${msg}</p>
-    </div>
+  const res = document.getElementById("result");
+  if (!res) return;
+  res.removeAttribute("hidden");
+  res.className = "result-block";
+  res.innerHTML = `
+    <h2>Er ging iets mis</h2>
+    <p>${where ? `<strong>${where}</strong><br/>` : ""}${msg}</p>
   `;
 }
 
@@ -151,10 +185,8 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  if (introEl) {
-    const p = introEl.querySelector("p");
-    data.introText = p ? p.innerText : "";
-  }
+  // Intro-tekst: veld bestaat niet meer in de HTML; laten we niks meesturen
+  // (backend kan 'introText' leeg of afwezig prima aan)
 
   const submitUrl = `${BACKEND_BASE}/submit`;
 
@@ -165,11 +197,11 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
       body: JSON.stringify(data)
     });
 
-    let payload;
+    let payload = {};
     try {
       payload = await res.json();
     } catch {
-      payload = {};
+      // noop
     }
 
     if (!res.ok) {
@@ -178,15 +210,18 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
       return;
     }
 
-    document.getElementById("result").innerHTML = `
-      <div class="result-block">
+    const box = document.getElementById("result");
+    if (box) {
+      box.removeAttribute("hidden");
+      box.className = "result-block";
+      box.innerHTML = `
         <h2>Resultaten QuickScan</h2>
         <p><strong>Gemiddeld cijfer AI:</strong> ${payload.total_score_ai ?? "-"}</p>
         <p><strong>Gemiddeld cijfer klant:</strong> ${payload.total_score_customer || "-"}</p>
         <p><strong>Samenvatting:</strong><br/>${payload.summary || "-"}</p>
         <p>${payload.email_sent ? "Het PDF-rapport is per e-mail verzonden." : "E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}</p>
-      </div>
-    `;
+      `;
+    }
   } catch (err) {
     showError("Netwerkfout", String(err));
     console.error(err);
