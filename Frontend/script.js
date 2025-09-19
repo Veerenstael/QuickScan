@@ -1,15 +1,10 @@
-// ===== Backend-basis: robuuste detectie + fallback =====
-// Volgorde:
-// 1) window.QUICKSCAN_BACKEND (zonder trailing slash)
-// 2) localhost fallback (voor lokale ontwikkeling)
-// 3) Productie fallback: jouw Render-URL
+// ===== Backend-basis: detectie + fallback =====
 function resolveBackendBase() {
   const raw = (typeof window !== "undefined" && window.QUICKSCAN_BACKEND != null)
     ? String(window.QUICKSCAN_BACKEND).trim()
     : "";
 
   let base = raw;
-
   if (!base) {
     if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
       base = "http://127.0.0.1:5000";
@@ -17,18 +12,13 @@ function resolveBackendBase() {
       base = "https://veerenstael-quickscan-backend.onrender.com";
     }
   }
-
-  // verwijder trailing slashes
   base = base.replace(/\/+$/, "");
-
-  // valideer URL
   try {
     const u = new URL(base);
     if (!u.protocol.startsWith("http")) throw new Error("Ongeldig protocol");
   } catch (e) {
     throw new Error(`Ongeldige QUICKSCAN_BACKEND basis-URL: "${base}".`);
   }
-
   return base;
 }
 
@@ -37,7 +27,6 @@ try {
   BACKEND_BASE = resolveBackendBase();
 } catch (e) {
   console.error(e);
-  // Toon nette melding in de UI; formulier blijft zichtbaar
   const res = document.getElementById("result");
   if (res) {
     res.removeAttribute("hidden");
@@ -47,7 +36,6 @@ try {
       <p><strong>Configuratiefout</strong><br/>${e.message}</p>
     `;
   }
-  // Laat een veilige default staan zodat de rest van het script blijft werken
   BACKEND_BASE = "https://veerenstael-quickscan-backend.onrender.com";
 }
 
@@ -99,7 +87,7 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-// Render "Uw cijfer:" met 5 klikbare bolletjes (1..5), de cijfers staan in de bolletjes
+// “Uw cijfer” met 5 klikbare bolletjes (1..5) met cijfers erin
 function scoreDots(name, initial) {
   const wrap = el("div", { class: "score-dots" });
   const label = el("span", { class: "label" }, "Uw cijfer:");
@@ -124,7 +112,7 @@ function scoreDots(name, initial) {
   return wrap;
 }
 
-// Maak één vraagblok (label + textarea + scorebolletjes + hidden label)
+// Maak één vraagblok
 function makeQuestion(section, qText, index) {
   const baseName = `${section}_${index}`;
 
@@ -178,8 +166,6 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  // Intro-tekst: veld bestaat niet meer in de HTML; niets meesturen
-
   const submitUrl = `${BACKEND_BASE}/submit`;
 
   try {
@@ -190,11 +176,7 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     });
 
     let payload = {};
-    try {
-      payload = await res.json();
-    } catch {
-      // noop
-    }
+    try { payload = await res.json(); } catch {}
 
     if (!res.ok) {
       const msg = payload && payload.error ? payload.error : `HTTP ${res.status}`;
@@ -207,11 +189,11 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
       box.removeAttribute("hidden");
       box.className = "result-block";
       box.innerHTML = `
-        <h2>Resultaten QuickScan</h2>
-        <p><strong>Gemiddeld cijfer AI:</strong> ${payload.total_score_ai ?? "-"}</p>
-        <p><strong>Gemiddeld cijfer klant:</strong> ${payload.total_score_customer || "-"}</p>
-        <p><strong>Samenvatting:</strong><br/>${payload.summary || "-"}</p>
-        <p>${payload.email_sent ? "Het PDF-rapport is per e-mail verzonden." : "E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}</p>
+        <h2>Dank je wel!</h2>
+        <p>De QuickScan is ontvangen.${payload.email_sent
+          ? " Het PDF-rapport is per e-mail verzonden."
+          : " E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}
+        </p>
       `;
     }
   } catch (err) {
