@@ -1,4 +1,9 @@
-/* Algemene body styling */
+/* ---------- Basis ---------- */
+:root {
+  /* Houd dit in sync met de logobreedte; intro-model schaalt 1.5× deze waarde */
+  --logo-w: 340px;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', Arial, sans-serif;
@@ -6,7 +11,7 @@ body {
   min-height: 100vh;
 }
 
-/* Achtergrond en kaart */
+/* Achtergrond en uitlijning */
 .dashboard-bg {
   min-height: 100vh;
   background: linear-gradient(180deg, #223344 0%, #1a2636 100%);
@@ -16,6 +21,7 @@ body {
   padding: 32px 0;
 }
 
+/* ---------- Header ---------- */
 .logo-header {
   display: flex;
   flex-direction: column;
@@ -25,7 +31,7 @@ body {
 }
 
 .veerenstael-logo {
-  width: 340px;
+  width: var(--logo-w);
   max-width: 80vw;
   height: auto;
   display: block;
@@ -35,7 +41,7 @@ body {
 .subtitle-title {
   font-size: 1.3rem;
   font-weight: bold;
-  color: #fff;
+  color: #fff;              /* geforceerd wit */
   letter-spacing: 2px;
   margin-top: 6px;
   margin-bottom: 10px;
@@ -43,7 +49,7 @@ body {
   text-transform: uppercase;
 }
 
-/* Hoofdcontainer */
+/* ---------- Hoofdkaart ---------- */
 .main-card {
   background: #222c38;
   border-radius: 18px;
@@ -58,7 +64,50 @@ body {
   flex-direction: column;
 }
 
-/* Formulier */
+/* ---------- Intro-blok ---------- */
+.intro {
+  background: #23314a;
+  border: 1px solid #3e70ff44;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 10px;
+}
+
+.intro h2 {
+  margin: 0 0 8px 0;
+  color: #b8c7e0;
+  font-size: 1.25rem;
+}
+
+.intro p {
+  margin: 0;
+  color: #e0e6f0;           /* tekstkleur teruggezet naar licht */
+  line-height: 1.55;
+}
+
+/* Intro-model (afbeelding.png): 1.5× logo, responsief begrensd */
+.intro-figure {
+  margin: 16px 0 0;
+  text-align: center;
+}
+
+.intro-figure .intro-model {
+  display: block;
+  width: min(calc(var(--logo-w) * 1.5), 70vw);
+  height: auto;
+  margin: 10px auto 0 auto;
+  border-radius: 8px;
+  border: 1px solid #2a3b4f;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+}
+
+.intro-figure figcaption {
+  margin-top: 8px;
+  color: #b8c7e0;
+  font-size: 0.9rem;
+}
+
+/* ---------- Formulier ---------- */
 form label {
   display: block;
   margin-top: 12px;
@@ -77,14 +126,14 @@ form input, form textarea, form select {
   margin-bottom: 12px;
   font-size: 1rem;
   box-sizing: border-box;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, outline 0.2s;
 }
 
 form input:focus, form textarea:focus, form select:focus {
   outline: 2px solid #3e70ff;
 }
 
-/* Sectietitels */
+/* Sectietitels in formulier */
 h3 {
   margin-top: 28px;
   margin-bottom: 8px;
@@ -94,7 +143,18 @@ h3 {
   padding-bottom: 4px;
 }
 
-/* Score rij 1–5 */
+/* Lay-out helpers */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+}
+
+@media (max-width: 720px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Score rij 1–5 (als je deze gebruikt) */
 .score-row {
   display: flex;
   align-items: center;
@@ -108,6 +168,13 @@ h3 {
 }
 
 /* Knoppen */
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
 button {
   border: none;
   border-radius: 9px;
@@ -117,28 +184,21 @@ button {
   cursor: pointer;
   transition: background 0.2s, box-shadow 0.2s;
   margin-top: 12px;
-  margin-right: 12px;
 }
 
 button.green {
   background: #13d17c;
   color: #fff;
 }
-
-button.green:hover {
-  background: #10b86a;
-}
+button.green:hover { background: #10b86a; }
 
 button.reset-btn {
   background: #23314a;
   color: #fff;
 }
+button.reset-btn:hover { background: #3b4970; }
 
-button.reset-btn:hover {
-  background: #3b4970;
-}
-
-/* Resultaat blok */
+/* ---------- Resultaat-blok ---------- */
 .result-block {
   background: #232b3a;
   border-radius: 12px;
@@ -158,36 +218,3 @@ button.reset-btn:hover {
   color: #e0e6f0;
   line-height: 1.5;
 }
-
-/* Intro blok */
-.intro {
-  background: #23314a;
-  border: 1px solid #3e70ff44;
-  border-radius: 10px;
-  padding: 16px;
-  margin-top: 10px;
-}
-.intro p {
-  margin: 0;
-  color: #e0e6f0;
-}
-
-/* Intro-model (afbeelding.png) in de introductie */
-.intro-figure {
-  margin: 16px 0 0;
-}
-.intro-figure .intro-model {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  border-radius: 8px;
-  border: 1px solid #2a3b4f;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
-}
-.intro-figure figcaption {
-  margin-top: 8px;
-  color: #b8c7e0;
-  font-size: 0.9rem;
-}
-
-
