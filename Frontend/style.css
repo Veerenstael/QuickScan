@@ -1,6 +1,6 @@
 /* ---------- Basis ---------- */
 :root {
-  /* Houd dit in sync met de logobreedte; intro-model schaalt 1.5× deze waarde */
+  /* Houd dit in sync met de logobreedte; intro-model schaalt ervan af */
   --logo-w: 340px;
 }
 
@@ -41,7 +41,7 @@ body {
 .subtitle-title {
   font-size: 1.3rem;
   font-weight: bold;
-  color: #fff;              /* geforceerd wit */
+  color: #fff;              /* wit houden */
   letter-spacing: 2px;
   margin-top: 6px;
   margin-bottom: 10px;
@@ -81,11 +81,11 @@ body {
 
 .intro p {
   margin: 0;
-  color: #e0e6f0;           /* tekstkleur teruggezet naar licht */
+  color: #e0e6f0;           /* lichte tekstkleur */
   line-height: 1.55;
 }
 
-/* Intro-model (afbeelding.png): 1.5× logo, responsief begrensd */
+/* Intro-model (afbeelding.png): nu 2.25× logo (1.5× groter dan voorheen), resp. begrensd */
 .intro-figure {
   margin: 16px 0 0;
   text-align: center;
@@ -93,7 +93,7 @@ body {
 
 .intro-figure .intro-model {
   display: block;
-  width: min(calc(var(--logo-w) * 1.5), 70vw);
+  width: min(calc(var(--logo-w) * 2.25), 85vw);
   height: auto;
   margin: 10px auto 0 auto;
   border-radius: 8px;
@@ -154,7 +154,7 @@ h3 {
   .grid-2 { grid-template-columns: 1fr; }
 }
 
-/* Score rij 1–5 (als je deze gebruikt) */
+/* Score rij 1–5 (indien gebruikt) */
 .score-row {
   display: flex;
   align-items: center;
