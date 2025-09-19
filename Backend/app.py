@@ -29,7 +29,7 @@ if OPENAI_KEY:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-09-18-v7-header-inbar-epw"
+VERSION = "QS-2025-09-18-v8-stoplicht-overlay"
 
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)        # kop en kolomkop
@@ -103,7 +103,37 @@ def ensure_logo_file() -> str | None:
                 return p
     return None
 
-# ===== helpers =====
+# ---------- Diagram-afbeelding (7 cirkels) ----------
+# Je kunt in Render een env-var MODEL_IMAGE_URL zetten (PNG/JPG). Anders gebruiken we lokaal 'afbeelding.png' als aanwezig.
+DEFAULT_MODEL_IMAGE_URL = os.getenv("MODEL_IMAGE_URL", "")
+LOCAL_MODEL_IMAGE = "afbeelding.png"
+MODEL_IMAGE_FILE = "model_overlay_base.png"
+
+def ensure_model_image() -> str | None:
+    if os.path.exists(MODEL_IMAGE_FILE) and os.path.getsize(MODEL_IMAGE_FILE) > 0:
+        return MODEL_IMAGE_FILE
+    # 1) lokale fallback uit repo
+    if os.path.exists(LOCAL_MODEL_IMAGE) and os.path.getsize(LOCAL_MODEL_IMAGE) > 0:
+        # kopieer naar vaste naam
+        try:
+            with open(LOCAL_MODEL_IMAGE, "rb") as src, open(MODEL_IMAGE_FILE, "wb") as dst:
+                dst.write(src.read())
+            return MODEL_IMAGE_FILE
+        except Exception:
+            pass
+    # 2) download via URL als gezet
+    if DEFAULT_MODEL_IMAGE_URL:
+        try:
+            r = requests.get(DEFAULT_MODEL_IMAGE_URL, timeout=15)
+            r.raise_for_status()
+            with open(MODEL_IMAGE_FILE, "wb") as f:
+                f.write(r.content)
+            return MODEL_IMAGE_FILE
+        except Exception:
+            return None
+    return None
+
+# ===== AI helpers =====
 def ai_score(answer, question):
     if not client:
         return 3
@@ -213,12 +243,9 @@ class ReportPDF(FPDF):
         # Titel in de balk (midden, wit): "Quick Scan"
         self.set_text_color(255, 255, 255)
         self.ufont(14, bold=True)
-        # volledige paginabreedte, y=7, hoogte 10
         self.set_xy(0, 7)
         self.cell(0, 10, self.utext("Quick Scan"), align="C")
         self.set_text_color(0, 0, 0)
-
-        # cursor onder de balk
         self.set_y(26)
 
     def footer(self):
@@ -243,9 +270,8 @@ class ReportPDF(FPDF):
         self.cell(0, 7, self.utext(v), ln=True)
 
     def _col_widths(self):
-        """Dynamische kolombreedtes binnen de effectieve pagina­breedte (epw)."""
         try:
-            total = self.epw  # fpdf2 helper for effective page width
+            total = self.epw
         except AttributeError:
             total = self.w - self.l_margin - self.r_margin
         w1 = total * 0.48
@@ -262,9 +288,6 @@ class ReportPDF(FPDF):
         self.set_text_color(0, 0, 0)
 
     def row_two_cols(self, left_text: str, right_answer: str, cust: str, ai: int):
-        """
-        Eén uniforme rij zonder dubbele borders, binnen de marges.
-        """
         x0 = self.get_x()
         y0 = self.get_y()
         w1, w2 = self._col_widths()
@@ -272,41 +295,93 @@ class ReportPDF(FPDF):
         line_h = 7.0
         band_h = 8.0
 
-        # hoogtes (zonder render)
         h_left  = self._nb_lines(w1 - 2*pad, left_text, bold=True,  size=11, line_h=line_h) * line_h + 2*pad
         h_right_txt = self._nb_lines(w2 - 2*pad, f"Antwoord: {right_answer}", bold=False, size=11, line_h=line_h) * line_h + 2*pad
         h_right = h_right_txt + band_h
         h = max(h_left, h_right)
 
-        # kaders
         self.rect(x0, y0, w1, h)
         self.rect(x0 + w1, y0, w2, h)
 
-        # links
-        self.set_xy(x0 + pad, y0 + pad)
-        self.ufont(11, bold=True)
+        self.set_xy(x0 + pad, y0 + pad); self.ufont(11, bold=True)
         self.multi_cell(w1 - 2*pad, line_h, self.utext(left_text), border=0)
 
-        # rechts: antwoord
-        self.set_xy(x0 + w1 + pad, y0 + pad)
-        self.ufont(11, bold=False)
+        self.set_xy(x0 + w1 + pad, y0 + pad); self.ufont(11, bold=False)
         self.multi_cell(w2 - 2*pad, line_h, self.utext(f"Antwoord: {right_answer}"), border=0)
 
-        # rechts: band onderin
         y_band = y0 + h - band_h
         self.set_fill_color(*CELLBAND)
         self.rect(x0 + w1, y_band, w2, band_h, "F")
         self.set_text_color(255, 255, 255)
         self.set_xy(x0 + w1 + pad, y_band + (band_h - 6) / 2)
 
-        # verdeel band in 2 delen ~ 42% / 58%
         kl_w = max(40, w2 * 0.42)
         self.cell(kl_w - pad, 6, self.utext(f"Cijfer klant: {cust}"), ln=0, align="C")
         self.cell(w2 - kl_w, 6, self.utext(f"Cijfer AI: {ai}"), ln=1, align="L")
         self.set_text_color(0, 0, 0)
 
-        # volgende rij
         self.set_xy(x0, y0 + h)
+
+# ===== Stoplicht-overlay generator =====
+# Normaliseerde posities (x,y in 0..1) voor 7 onderwerpen op het modelplaatje.
+# Afgestemd op de meegegeven afbeelding; pas gerust aan als jullie een ander beeld gebruiken.
+STOPLIGHT_POS = {
+    "asset management strategie": (0.50, 0.50),  # midden
+    "werkvoorbereiding":          (0.68, 0.22),  # rechtsboven
+    "uitvoering onderhoud":       (0.83, 0.52),  # rechts
+    "werk afhandelen en controleren": (0.68, 0.82),  # rechtsonder
+    "inregelen onderhoudsplan":   (0.50, 0.92),  # onder
+    "maintenance & reliability engineering": (0.32, 0.82),  # linksonder
+    "analyse gegevens":           (0.32, 0.22),  # linksboven
+}
+
+def norm_name(s: str) -> str:
+    return (s or "").strip().lower()
+
+def color_for_score(v: float):
+    # 1=rood, 2=oranje, 3=geel, 4=lichtgroen, 5=groen
+    if v <= 1.5:
+        return (0.85, 0.20, 0.20)
+    if v <= 2.5:
+        return (1.00, 0.55, 0.00)
+    if v <= 3.5:
+        return (1.00, 0.85, 0.00)
+    if v <= 4.5:
+        return (0.55, 0.80, 0.35)
+    return (0.00, 0.60, 0.20)
+
+def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.png"):
+    base_path = ensure_model_image()
+    if not base_path:
+        return None  # geen basisafbeelding beschikbaar
+
+    img = plt.imread(base_path)
+    h, w = img.shape[0], img.shape[1]
+
+    fig = plt.figure(figsize=(w/150, h/150), dpi=150)
+    ax = plt.axes([0, 0, 1, 1])
+    ax.imshow(img)
+    ax.axis("off")
+
+    # teken stoplichten
+    for label, score in zip(section_labels, section_scores):
+        key = norm_name(label)
+        if key not in STOPLIGHT_POS:
+            continue
+        nx, ny = STOPLIGHT_POS[key]
+        x = nx * w
+        y = ny * h
+        color = color_for_score(score)
+        # rand in wit voor contrast
+        circ = plt.Circle((x, y), radius=min(w, h)*0.018, color=color, ec="white", lw=2)
+        ax.add_patch(circ)
+        # score klein erboven
+        ax.text(x, y - min(w, h)*0.03, f"{score:.1f}", ha="center", va="center", fontsize=10, color="white",
+                bbox=dict(boxstyle="round,pad=0.2", fc=(0,0,0,0.45), ec="none"))
+
+    fig.savefig(out_path, dpi=150, transparent=False)
+    plt.close(fig)
+    return out_path
 
 # ===== routes =====
 @app.route("/health", methods=["GET"])
@@ -347,14 +422,11 @@ def submit():
 
         # PDF
         pdf = ReportPDF()
-        # marges (standaard is prima; epw houdt hier rekening mee)
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # (Titel staat nu al in de headerbalk)
+        # Metadata (titel staat in header)
         pdf.ln(2)
-
-        # Metadata
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         pdf.kv("Datum:", now)
         pdf.kv("Naam:", data.get("name", ""))
@@ -377,7 +449,7 @@ def submit():
         for vraag, antwoord, sect, cust in items:
             grouped.setdefault(sect, []).append((vraag, antwoord, cust))
 
-        # Keep-together drempel (ongeveer titel + header + 2 rijen)
+        # Keep-together drempel
         MIN_SPACE_FOR_SECTION = 70  # mm
 
         # Render per onderwerp
@@ -386,18 +458,15 @@ def submit():
 
         pdf.section_title("Vragen en antwoorden")
         for sect, rows in grouped.items():
-            # keep-together: als te weinig ruimte rest, nieuwe pagina vóór het onderwerp
             remaining = pdf.h - pdf.b_margin - pdf.get_y()
             if remaining < MIN_SPACE_FOR_SECTION:
                 pdf.add_page()
 
-            # onderwerp-kop
             pdf.ufont(12, bold=True)
             pdf.set_text_color(*DARKBLUE)
             pdf.cell(0, 7, pdf.utext(sect), ln=True)
             pdf.set_text_color(0, 0, 0)
 
-            # kolomkop
             pdf.table_header()
 
             ai_scores_for_avg = []
@@ -440,17 +509,27 @@ def submit():
         pdf.ufont(11, bold=False)
         pdf.multi_cell(0, 7, pdf.utext(summary_text))
 
-        # ---- Radar op nieuwe pagina + titel aangepast ----
-        def wrap_label(lbl: str) -> str:
-            l = lbl.strip()
-            if l.lower() == "uitvoering onderhoud":
-                return "Uitvoering\nonderhoud"
-            if l == "Maintenance & Reliability Engineering":
-                return "Maintenance &\nReliability\nEngineering"
-            return l
-
+        # ---- Nieuwe pagina voor visuals (stoplicht + radar) ----
         if radar_sections:
-            pdf.add_page()  # nieuwe pagina zodat titel + afbeelding bij elkaar staan
+            pdf.add_page()
+
+            # 1) STOPLICHT-OVERLAY
+            # labels voor leesbare matching naar posities
+            def wrap_label(lbl: str) -> str:
+                l = lbl.strip()
+                if l.lower() == "uitvoering onderhoud":
+                    return "Uitvoering\nonderhoud"
+                if l == "Maintenance & Reliability Engineering":
+                    return "Maintenance &\nReliability\nEngineering"
+                return l
+
+            overlay_path = build_stoplight_overlay(radar_sections, radar_vals, out_path="stoplicht.png")
+            if overlay_path:
+                pdf.section_title("Stoplichtoverzicht per onderwerp")
+                pdf.image(overlay_path, w=180)
+                pdf.ln(4)
+
+            # 2) RADAR
             img_path = "radar.png"
             try:
                 labels = [wrap_label(s) for s in radar_sections]
