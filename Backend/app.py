@@ -221,13 +221,13 @@ class ReportPDF(FPDF):
 # Coördinaten zijn NU "top-center" van het stoplicht (x,y ∈ 0..1)
 # Default posities afgestemd op jouw rode stippen:
 DEFAULT_STOPLIGHT_TOPPOS = {
-    "gegevens analyseren":                  (0.530, 0.095),
-    "werk voorbereiden":                    (0.845, 0.095),
-    "uitvoeren werkzaamheden":              (0.965, 0.266),
-    "werk afhandelen en controleren":       (0.740, 0.702),
-    "inregelen onderhoudsplan":             (0.395, 0.710),
-    "maintenance & reliability engineering":(0.035, 0.470),
-    "am-strategie":                         (0.505, 0.325),
+    "gegevens analyseren": [0.39, 0.13], 
+  "werk voorbereiden": [0.75, 0.13], 
+  "uitvoeren werkzaamheden": [0.87, 0.45], 
+  "werk afhandelen en controleren": [0.75, 0.71], 
+  "inregelen onderhoudsplan": [0.39, 0.73], 
+  "maintenance & reliability engineering": [0.03, 0.43], 
+  "am-strategie": [0.50, 0.28],
 }
 
 def load_custom_positions():
@@ -487,3 +487,4 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
+
