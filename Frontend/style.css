@@ -85,7 +85,7 @@ body {
   line-height: 1.55;
 }
 
-/* Intro-model (afbeelding.png): nu 2.25× logo (1.5× groter dan voorheen), resp. begrensd */
+/* Intro-model (afbeelding.png): 2.25× logo, resp. begrensd */
 .intro-figure {
   margin: 16px 0 0;
   text-align: center;
@@ -116,7 +116,20 @@ form label {
   color: #e0e6f0;
 }
 
-form input, form textarea, form select {
+form textarea {
+  width: 100%;
+  background: #1a2230;
+  color: #e0e0e0;
+  border: none;
+  border-radius: 9px;
+  padding: 12px;
+  margin-bottom: 8px; /* iets korter, zodat bolletjes dichterbij staan */
+  font-size: 1rem;
+  box-sizing: border-box;
+  transition: box-shadow 0.2s, outline 0.2s;
+}
+
+form input, form select {
   width: 100%;
   background: #1a2230;
   color: #e0e0e0;
@@ -154,7 +167,7 @@ h3 {
   .grid-2 { grid-template-columns: 1fr; }
 }
 
-/* Score rij 1–5 (indien gebruikt) */
+/* Score rij 1–5 (oude select-stijl, indien nog gebruikt) */
 .score-row {
   display: flex;
   align-items: center;
@@ -223,8 +236,8 @@ button.reset-btn:hover { background: #3b4970; }
 .score-dots {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 6px 0 14px;
+  gap: 10px;
+  margin: 4px 0 10px; /* dichter op het invulveld */
 }
 
 .score-dots .label {
@@ -248,8 +261,8 @@ button.reset-btn:hover { background: #3b4970; }
 }
 
 .score-dots label.dot {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: #1a2230;
   border: 2px solid #3e70ff66;
@@ -257,7 +270,10 @@ button.reset-btn:hover { background: #3b4970; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+  font-weight: 700;
+  font-size: 12px;       /* cijfers in de bolletjes */
+  color: #b8c7e0;        /* standaard cijferkleur */
+  transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease, color .12s ease, background-color .12s ease;
   box-shadow: 0 0 0 0 rgba(62,112,255,0);
 }
 
@@ -268,20 +284,9 @@ button.reset-btn:hover { background: #3b4970; }
 
 .score-dots input[type="radio"]:checked + label.dot {
   border-color: #13d17c;
+  color: #13d17c;        /* cijfer kleurt groen bij selectie */
   box-shadow: 0 0 0 4px rgba(19,209,124,0.18);
-}
-
-.score-dots .dot::after {
-  content: "";
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: transparent;
-}
-
-/* “gevuld” bolletje bij checked */
-.score-dots input[type="radio"]:checked + .dot::after {
-  background: #13d17c;
+  background-color: #11202a; /* subtiele achtergrond */
 }
 
 /* Toegankelijkheid: focusring via label */
