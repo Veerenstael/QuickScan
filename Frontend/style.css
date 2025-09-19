@@ -171,3 +171,23 @@ button.reset-btn:hover {
   margin: 0;
   color: #e0e6f0;
 }
+
+/* Intro-model (afbeelding.png) in de introductie */
+.intro-figure {
+  margin: 16px 0 0;
+}
+.intro-figure .intro-model {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #2a3b4f;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+}
+.intro-figure figcaption {
+  margin-top: 8px;
+  color: #b8c7e0;
+  font-size: 0.9rem;
+}
+
+
