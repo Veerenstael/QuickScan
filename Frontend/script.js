@@ -84,13 +84,6 @@ const QUESTIONS = {
 };
 
 // ===== Helpers =====
-function createOption(v) {
-  const o = document.createElement("option");
-  o.value = String(v);
-  o.textContent = String(v);
-  return o;
-}
-
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -106,7 +99,7 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-// Render "Uw cijfer:" met 5 klikbare bolletjes (1..5)
+// Render "Uw cijfer:" met 5 klikbare bolletjes (1..5), de cijfers staan in de bolletjes
 function scoreDots(name, initial) {
   const wrap = el("div", { class: "score-dots" });
   const label = el("span", { class: "label" }, "Uw cijfer:");
@@ -121,7 +114,7 @@ function scoreDots(name, initial) {
       value: String(i),
       ...(String(initial) === String(i) ? { checked: "checked" } : {})
     });
-    const dot = el("label", { class: "dot", for: id });
+    const dot = el("label", { class: "dot", for: id, title: `Score ${i}`, "aria-label": `Score ${i}` }, String(i));
     dots.appendChild(input);
     dots.appendChild(dot);
   }
@@ -185,8 +178,7 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  // Intro-tekst: veld bestaat niet meer in de HTML; laten we niks meesturen
-  // (backend kan 'introText' leeg of afwezig prima aan)
+  // Intro-tekst: veld bestaat niet meer in de HTML; niets meesturen
 
   const submitUrl = `${BACKEND_BASE}/submit`;
 
