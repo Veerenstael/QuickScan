@@ -223,7 +223,7 @@ class ReportPDF(FPDF):
 DEFAULT_STOPLIGHT_TOPPOS = {
     "gegevens analyseren": [0.39, 0.13], 
     "werk voorbereiden": [0.77, 0.13], 
-  "uitvoeren werkzaamheden": [0.93, 0.43], 
+  "uitvoeren werkzaamheden": [0.96, 0.43], 
   "werk afhandelen en controleren": [0.77, 0.72], 
   "inregelen onderhoudsplan": [0.39, 0.72], 
   "maintenance & reliability engineering": [0.025, 0.43], 
@@ -487,5 +487,6 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
