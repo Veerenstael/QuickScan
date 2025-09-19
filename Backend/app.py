@@ -30,7 +30,7 @@ if OPENAI_KEY:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-09-18-v10-stoplicht-full"
+VERSION = "QS-2025-09-18-v11-stoplicht-pos-tuned"
 
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)        # kop en kolomkop
@@ -319,55 +319,40 @@ class ReportPDF(FPDF):
         self.set_xy(x0, y0 + h)
 
 # ===== Stoplicht-overlay =====
-# Posities (genormaliseerd 0..1) zijn zo gekozen dat de stoplichten
-# net buiten de cirkels staan en geen tekst overlappen.
+# NIEUWE posities in genormaliseerde coordinaten (x,y in 0..1) — uitgelijnd op jouw rode stippen
 STOPLIGHT_POS = {
-    # linksboven cluster (boven de cirkel)
-    "gegevens analyseren": (0.355, 0.125),
-    # rechtsboven cluster (boven de cirkel)
-    "werk voorbereiden": (0.645, 0.125),
-    # rechts (rechts van de cirkel)
-    "uitvoeren werkzaamheden": (0.885, 0.520),
-    # rechtsonder (onder de cirkel)
-    "werk afhandelen en controleren": (0.645, 0.885),
-    # onder (onder de cirkel)
-    "inregelen onderhoudsplan": (0.500, 0.900),
-    # links-midden (links van de cirkel)  << fix t.o.v. eerder: niet meer onderaan
-    "maintenance & reliability engineering": (0.115, 0.540),
-    # centrum (boven de midden-cirkel)
-    "am-strategie": (0.500, 0.460),
-    "am strategie": (0.500, 0.460),
-    "asset management strategie": (0.500, 0.460),
+    "gegevens analyseren":                 (0.445, 0.215),  # rechts van de boven-linker cirkel
+    "werk voorbereiden":                   (0.790, 0.215),  # rechts van de boven-rechter cirkel
+    "uitvoeren werkzaamheden":             (0.940, 0.355),  # rechts van de rechter cirkel
+    "werk afhandelen en controleren":      (0.755, 0.770),  # links van de onder-rechter cirkel
+    "inregelen onderhoudsplan":            (0.410, 0.740),  # rechts van de onder-linker cirkel
+    "maintenance & reliability engineering":(0.060, 0.530),  # links van de linker cirkel
+    "am-strategie":                        (0.505, 0.390),  # boven de midden-cirkel
+    "asset management strategie":          (0.505, 0.390),
+    "am strategie":                        (0.505, 0.390),
 }
 
 def norm_name(s: str) -> str:
     t = (s or "").lower().strip()
-    # eenvoudige normalisatie
     t = t.replace("’", "'").replace("&", " & ").replace("  ", " ")
-    t = t.replace("maintenance-en", "maintenance &").replace("maintenance en", "maintenance &")
     t = t.replace("werkvoorbereiding", "werk voorbereiden")
     t = t.replace("uitvoering onderhoud", "uitvoeren werkzaamheden")
     t = t.replace("maintenance-en reliability-engineering", "maintenance & reliability engineering")
     t = t.replace("maintenance- en reliability-engineering", "maintenance & reliability engineering")
     t = t.replace("maintenance en reliability engineering", "maintenance & reliability engineering")
-    t = t.replace("am strategie", "am-strategie")
+    if "am" in t and "strategie" in t:
+        t = "am-strategie"
     return t
 
 def bucket_for_score(v: float) -> str:
-    """Map 1..5 naar stoplichtkleur: rood / geel / groen."""
-    if v < 2.5:
-        return "red"
-    if v <= 3.5:
-        return "yellow"
+    if v < 2.5:  return "red"
+    if v <= 3.5: return "yellow"
     return "green"
 
 def lamp_color(name: str) -> tuple:
-    if name == "red":
-        return (0.85, 0.20, 0.20)
-    if name == "yellow":
-        return (1.00, 0.80, 0.00)
-    if name == "green":
-        return (0.00, 0.70, 0.30)
+    if name == "red":    return (0.85, 0.20, 0.20)
+    if name == "yellow": return (1.00, 0.80, 0.00)
+    if name == "green":  return (0.00, 0.70, 0.30)
     return (0.6, 0.6, 0.6)
 
 def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.png"):
@@ -383,7 +368,15 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
     ax.imshow(img)
     ax.axis("off")
 
-    # parameters van het stoplicht
+    # optioneel debug-raster met percentages
+    if os.getenv("STOPLIGHT_DEBUG", "0") == "1":
+        for i in range(11):
+            ax.plot([w*i/10, w*i/10], [0, h], color=(1,1,1,0.15), lw=0.8)
+            ax.plot([0, w], [h*i/10, h*i/10], color=(1,1,1,0.15), lw=0.8)
+            ax.text(w*i/10, 12, f"{i/10:.1f}", color=(1,1,1,0.7), ha="center", va="top", fontsize=8)
+            ax.text(20, h*i/10, f"{i/10:.1f}", color=(1,1,1,0.7), ha="left", va="center", fontsize=8)
+
+    # stoplicht-maten
     housing_w = min(w, h) * 0.060
     housing_h = min(w, h) * 0.115
     radius    = housing_w * 0.20
@@ -397,7 +390,7 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
         cx = nx * w
         cy = ny * h
 
-        # behuizing (licht afgerond) met schaduw
+        # behuizing
         box_x = cx - housing_w/2
         box_y = cy - housing_h/2
         shadow = FancyBboxPatch(
@@ -413,7 +406,7 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
         )
         ax.add_patch(box)
 
-        # drie lampjes
+        # lampjes
         centers = [
             (cx, box_y + padding + radius),                           # boven (rood)
             (cx, box_y + housing_h/2),                                # midden (geel)
@@ -425,11 +418,8 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
             name = ["red", "yellow", "green"][idx]
             col = lamp_color(name)
             if name != active:
-                col = (col[0]*0.45, col[1]*0.45, col[2]*0.45)  # dimmen
-
-            # gloed/outline
+                col = (col[0]*0.45, col[1]*0.45, col[2]*0.45)  # dim
             ax.add_patch(plt.Circle((lx, ly), radius*1.25, color=(1,1,1,0.18), ec="none"))
-            # lamp zelf
             lw = 2.2 if name == active else 1.0
             ax.add_patch(plt.Circle((lx, ly), radius, color=col, ec="white", lw=lw))
 
@@ -462,7 +452,7 @@ def submit():
     try:
         data = request.json or {}
 
-        # items: (vraag, antwoord, sectie, klantcijfer-string) — volgorde behouden
+        # items: (vraag, antwoord, sectie, klantcijfer-string)
         items = []
         for k in [k for k in data.keys() if k.endswith("_answer")]:
             prefix = k[:-7]
@@ -483,7 +473,7 @@ def submit():
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # Metadata (titel staat in header)
+        # Meta
         pdf.ln(2)
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         pdf.kv("Datum:", now)
@@ -548,7 +538,7 @@ def submit():
             radar_vals.append(subj_avg)
             pdf.ln(1)
 
-        # Scores-overzicht
+        # Scores
         avg_ai = round(sum(all_ai)/len(all_ai), 2) if all_ai else 0
         avg_cust = round(sum(all_cust)/len(all_cust), 2) if all_cust else 0
 
@@ -565,7 +555,7 @@ def submit():
         pdf.ufont(11, bold=False)
         pdf.multi_cell(0, 7, pdf.utext(summary_text))
 
-        # ---- Visuals: radar en ALS LAATSTE het stoplichtoverzicht ----
+        # Visuals (radar) + altijd afsluiten met stoplichtpagina
         if radar_sections:
             # RADAR
             pdf.add_page()
@@ -611,7 +601,7 @@ def submit():
             except Exception as e:
                 app.logger.error(f"Kon radargrafiek niet maken: {e}")
 
-            # STOPLICHT — ALTIJD ALS ALLERLAATSTE, NIEUWE PAGINA
+            # STOPLICHT (laatste pagina)
             overlay_path = build_stoplight_overlay(radar_sections, radar_vals, out_path="stoplicht.png")
             if overlay_path:
                 pdf.add_page()
