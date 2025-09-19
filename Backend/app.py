@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import FancyBboxPatch
 
 # ====== Optioneel OpenAI client ======
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
@@ -29,7 +30,7 @@ if OPENAI_KEY:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-09-18-v8-stoplicht-overlay"
+VERSION = "QS-2025-09-18-v10-stoplicht-full"
 
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)        # kop en kolomkop
@@ -104,24 +105,20 @@ def ensure_logo_file() -> str | None:
     return None
 
 # ---------- Diagram-afbeelding (7 cirkels) ----------
-# Je kunt in Render een env-var MODEL_IMAGE_URL zetten (PNG/JPG). Anders gebruiken we lokaal 'afbeelding.png' als aanwezig.
 DEFAULT_MODEL_IMAGE_URL = os.getenv("MODEL_IMAGE_URL", "")
-LOCAL_MODEL_IMAGE = "afbeelding.png"
-MODEL_IMAGE_FILE = "model_overlay_base.png"
+LOCAL_MODEL_IMAGE = "afbeelding.png"         # Zet dit bestand naast app.py
+MODEL_IMAGE_FILE = "model_overlay_base.png"  # interne cache-naam
 
 def ensure_model_image() -> str | None:
     if os.path.exists(MODEL_IMAGE_FILE) and os.path.getsize(MODEL_IMAGE_FILE) > 0:
         return MODEL_IMAGE_FILE
-    # 1) lokale fallback uit repo
     if os.path.exists(LOCAL_MODEL_IMAGE) and os.path.getsize(LOCAL_MODEL_IMAGE) > 0:
-        # kopieer naar vaste naam
         try:
             with open(LOCAL_MODEL_IMAGE, "rb") as src, open(MODEL_IMAGE_FILE, "wb") as dst:
                 dst.write(src.read())
             return MODEL_IMAGE_FILE
         except Exception:
             pass
-    # 2) download via URL als gezet
     if DEFAULT_MODEL_IMAGE_URL:
         try:
             r = requests.get(DEFAULT_MODEL_IMAGE_URL, timeout=15)
@@ -314,7 +311,6 @@ class ReportPDF(FPDF):
         self.rect(x0 + w1, y_band, w2, band_h, "F")
         self.set_text_color(255, 255, 255)
         self.set_xy(x0 + w1 + pad, y_band + (band_h - 6) / 2)
-
         kl_w = max(40, w2 * 0.42)
         self.cell(kl_w - pad, 6, self.utext(f"Cijfer klant: {cust}"), ln=0, align="C")
         self.cell(w2 - kl_w, 6, self.utext(f"Cijfer AI: {ai}"), ln=1, align="L")
@@ -322,38 +318,62 @@ class ReportPDF(FPDF):
 
         self.set_xy(x0, y0 + h)
 
-# ===== Stoplicht-overlay generator =====
-# Normaliseerde posities (x,y in 0..1) voor 7 onderwerpen op het modelplaatje.
-# Afgestemd op de meegegeven afbeelding; pas gerust aan als jullie een ander beeld gebruiken.
+# ===== Stoplicht-overlay =====
+# Posities (genormaliseerd 0..1) zijn zo gekozen dat de stoplichten
+# net buiten de cirkels staan en geen tekst overlappen.
 STOPLIGHT_POS = {
-    "asset management strategie": (0.50, 0.50),  # midden
-    "werkvoorbereiding":          (0.68, 0.22),  # rechtsboven
-    "uitvoering onderhoud":       (0.83, 0.52),  # rechts
-    "werk afhandelen en controleren": (0.68, 0.82),  # rechtsonder
-    "inregelen onderhoudsplan":   (0.50, 0.92),  # onder
-    "maintenance & reliability engineering": (0.32, 0.82),  # linksonder
-    "analyse gegevens":           (0.32, 0.22),  # linksboven
+    # linksboven cluster (boven de cirkel)
+    "gegevens analyseren": (0.355, 0.125),
+    # rechtsboven cluster (boven de cirkel)
+    "werk voorbereiden": (0.645, 0.125),
+    # rechts (rechts van de cirkel)
+    "uitvoeren werkzaamheden": (0.885, 0.520),
+    # rechtsonder (onder de cirkel)
+    "werk afhandelen en controleren": (0.645, 0.885),
+    # onder (onder de cirkel)
+    "inregelen onderhoudsplan": (0.500, 0.900),
+    # links-midden (links van de cirkel)  << fix t.o.v. eerder: niet meer onderaan
+    "maintenance & reliability engineering": (0.115, 0.540),
+    # centrum (boven de midden-cirkel)
+    "am-strategie": (0.500, 0.460),
+    "am strategie": (0.500, 0.460),
+    "asset management strategie": (0.500, 0.460),
 }
 
 def norm_name(s: str) -> str:
-    return (s or "").strip().lower()
+    t = (s or "").lower().strip()
+    # eenvoudige normalisatie
+    t = t.replace("’", "'").replace("&", " & ").replace("  ", " ")
+    t = t.replace("maintenance-en", "maintenance &").replace("maintenance en", "maintenance &")
+    t = t.replace("werkvoorbereiding", "werk voorbereiden")
+    t = t.replace("uitvoering onderhoud", "uitvoeren werkzaamheden")
+    t = t.replace("maintenance-en reliability-engineering", "maintenance & reliability engineering")
+    t = t.replace("maintenance- en reliability-engineering", "maintenance & reliability engineering")
+    t = t.replace("maintenance en reliability engineering", "maintenance & reliability engineering")
+    t = t.replace("am strategie", "am-strategie")
+    return t
 
-def color_for_score(v: float):
-    # 1=rood, 2=oranje, 3=geel, 4=lichtgroen, 5=groen
-    if v <= 1.5:
-        return (0.85, 0.20, 0.20)
-    if v <= 2.5:
-        return (1.00, 0.55, 0.00)
+def bucket_for_score(v: float) -> str:
+    """Map 1..5 naar stoplichtkleur: rood / geel / groen."""
+    if v < 2.5:
+        return "red"
     if v <= 3.5:
-        return (1.00, 0.85, 0.00)
-    if v <= 4.5:
-        return (0.55, 0.80, 0.35)
-    return (0.00, 0.60, 0.20)
+        return "yellow"
+    return "green"
+
+def lamp_color(name: str) -> tuple:
+    if name == "red":
+        return (0.85, 0.20, 0.20)
+    if name == "yellow":
+        return (1.00, 0.80, 0.00)
+    if name == "green":
+        return (0.00, 0.70, 0.30)
+    return (0.6, 0.6, 0.6)
 
 def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.png"):
     base_path = ensure_model_image()
     if not base_path:
-        return None  # geen basisafbeelding beschikbaar
+        return None
 
     img = plt.imread(base_path)
     h, w = img.shape[0], img.shape[1]
@@ -363,21 +383,59 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
     ax.imshow(img)
     ax.axis("off")
 
-    # teken stoplichten
+    # parameters van het stoplicht
+    housing_w = min(w, h) * 0.060
+    housing_h = min(w, h) * 0.115
+    radius    = housing_w * 0.20
+    padding   = housing_w * 0.12
+
     for label, score in zip(section_labels, section_scores):
         key = norm_name(label)
         if key not in STOPLIGHT_POS:
             continue
         nx, ny = STOPLIGHT_POS[key]
-        x = nx * w
-        y = ny * h
-        color = color_for_score(score)
-        # rand in wit voor contrast
-        circ = plt.Circle((x, y), radius=min(w, h)*0.018, color=color, ec="white", lw=2)
-        ax.add_patch(circ)
-        # score klein erboven
-        ax.text(x, y - min(w, h)*0.03, f"{score:.1f}", ha="center", va="center", fontsize=10, color="white",
-                bbox=dict(boxstyle="round,pad=0.2", fc=(0,0,0,0.45), ec="none"))
+        cx = nx * w
+        cy = ny * h
+
+        # behuizing (licht afgerond) met schaduw
+        box_x = cx - housing_w/2
+        box_y = cy - housing_h/2
+        shadow = FancyBboxPatch(
+            (box_x+2, box_y+2), housing_w, housing_h,
+            boxstyle="round,pad=0.012,rounding_size=6",
+            linewidth=0.0, facecolor=(0,0,0,0.20)
+        )
+        ax.add_patch(shadow)
+        box = FancyBboxPatch(
+            (box_x, box_y), housing_w, housing_h,
+            boxstyle="round,pad=0.012,rounding_size=6",
+            linewidth=1.0, edgecolor=(1,1,1,0.9), facecolor=(0.15,0.17,0.20,0.85)
+        )
+        ax.add_patch(box)
+
+        # drie lampjes
+        centers = [
+            (cx, box_y + padding + radius),                           # boven (rood)
+            (cx, box_y + housing_h/2),                                # midden (geel)
+            (cx, box_y + housing_h - padding - radius),               # onder (groen)
+        ]
+        active = bucket_for_score(score)
+
+        for idx, (lx, ly) in enumerate(centers):
+            name = ["red", "yellow", "green"][idx]
+            col = lamp_color(name)
+            if name != active:
+                col = (col[0]*0.45, col[1]*0.45, col[2]*0.45)  # dimmen
+
+            # gloed/outline
+            ax.add_patch(plt.Circle((lx, ly), radius*1.25, color=(1,1,1,0.18), ec="none"))
+            # lamp zelf
+            lw = 2.2 if name == active else 1.0
+            ax.add_patch(plt.Circle((lx, ly), radius, color=col, ec="white", lw=lw))
+
+        # score-label boven de behuizing
+        ax.text(cx, box_y - 8, f"{score:.1f}", ha="center", va="bottom", fontsize=11, color="white",
+                bbox=dict(boxstyle="round,pad=0.25", fc=(0,0,0,0.55), ec="none"))
 
     fig.savefig(out_path, dpi=150, transparent=False)
     plt.close(fig)
@@ -449,10 +507,8 @@ def submit():
         for vraag, antwoord, sect, cust in items:
             grouped.setdefault(sect, []).append((vraag, antwoord, cust))
 
-        # Keep-together drempel
         MIN_SPACE_FOR_SECTION = 70  # mm
 
-        # Render per onderwerp
         radar_sections, radar_vals = [], []
         all_ai, all_cust = [], []
 
@@ -509,12 +565,10 @@ def submit():
         pdf.ufont(11, bold=False)
         pdf.multi_cell(0, 7, pdf.utext(summary_text))
 
-        # ---- Nieuwe pagina voor visuals (stoplicht + radar) ----
+        # ---- Visuals: radar en ALS LAATSTE het stoplichtoverzicht ----
         if radar_sections:
+            # RADAR
             pdf.add_page()
-
-            # 1) STOPLICHT-OVERLAY
-            # labels voor leesbare matching naar posities
             def wrap_label(lbl: str) -> str:
                 l = lbl.strip()
                 if l.lower() == "uitvoering onderhoud":
@@ -523,13 +577,6 @@ def submit():
                     return "Maintenance &\nReliability\nEngineering"
                 return l
 
-            overlay_path = build_stoplight_overlay(radar_sections, radar_vals, out_path="stoplicht.png")
-            if overlay_path:
-                pdf.section_title("Stoplichtoverzicht per onderwerp")
-                pdf.image(overlay_path, w=180)
-                pdf.ln(4)
-
-            # 2) RADAR
             img_path = "radar.png"
             try:
                 labels = [wrap_label(s) for s in radar_sections]
@@ -563,6 +610,13 @@ def submit():
                 pdf.image(img_path, w=180)
             except Exception as e:
                 app.logger.error(f"Kon radargrafiek niet maken: {e}")
+
+            # STOPLICHT — ALTIJD ALS ALLERLAATSTE, NIEUWE PAGINA
+            overlay_path = build_stoplight_overlay(radar_sections, radar_vals, out_path="stoplicht.png")
+            if overlay_path:
+                pdf.add_page()
+                pdf.section_title("Stoplichtoverzicht per onderwerp")
+                pdf.image(overlay_path, w=180)
 
         # PDF opslaan
         filename = "quickscan.pdf"
