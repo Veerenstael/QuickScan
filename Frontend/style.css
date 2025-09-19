@@ -218,3 +218,74 @@ button.reset-btn:hover { background: #3b4970; }
   color: #e0e6f0;
   line-height: 1.5;
 }
+
+/* ---------- Nieuw: Scorebolletjes (Uw cijfer 1–5) ---------- */
+.score-dots {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 14px;
+}
+
+.score-dots .label {
+  color: #e0e6f0;
+  font-weight: 600;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.score-dots .dots {
+  display: inline-flex;
+  gap: 10px;
+}
+
+/* verberg native radios maar houd toegankelijk */
+.score-dots input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.score-dots label.dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1a2230;
+  border: 2px solid #3e70ff66;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+  box-shadow: 0 0 0 0 rgba(62,112,255,0);
+}
+
+.score-dots label.dot:hover {
+  transform: scale(1.06);
+  border-color: #3e70ff;
+}
+
+.score-dots input[type="radio"]:checked + label.dot {
+  border-color: #13d17c;
+  box-shadow: 0 0 0 4px rgba(19,209,124,0.18);
+}
+
+.score-dots .dot::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+/* “gevuld” bolletje bij checked */
+.score-dots input[type="radio"]:checked + .dot::after {
+  background: #13d17c;
+}
+
+/* Toegankelijkheid: focusring via label */
+.score-dots input[type="radio"]:focus + label.dot {
+  outline: 2px solid #3e70ff;
+  outline-offset: 2px;
+}
