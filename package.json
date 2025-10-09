@@ -1,5 +1,5 @@
 {
   "devDependencies": {
-    "@netlify/plugin-python": "^3.0.0"
+    "@netlify/functions": "^3.0.0"
   }
 }
