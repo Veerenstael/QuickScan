@@ -1,43 +1,5 @@
-// ===== Backend-basis: detectie + fallback =====
-function resolveBackendBase() {
-  const raw = (typeof window !== "undefined" && window.QUICKSCAN_BACKEND != null)
-    ? String(window.QUICKSCAN_BACKEND).trim()
-    : "";
-
-  let base = raw;
-  if (!base) {
-    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-      base = "http://127.0.0.1:5000";
-    } else {
-      base = window.location.origin;
-    }
-  }
-  base = base.replace(/\/+$/, "");
-  try {
-    const u = new URL(base);
-    if (!u.protocol.startsWith("http")) throw new Error("Ongeldig protocol");
-  } catch (e) {
-    throw new Error(`Ongeldige QUICKSCAN_BACKEND basis-URL: "${base}".`);
-  }
-  return base;
-}
-
-let BACKEND_BASE;
-try {
-  BACKEND_BASE = resolveBackendBase();
-} catch (e) {
-  console.error(e);
-  const res = document.getElementById("result");
-  if (res) {
-    res.removeAttribute("hidden");
-    res.className = "result-block";
-    res.innerHTML = `
-      <h2>Er ging iets mis</h2>
-      <p><strong>Configuratiefout</strong><br/>${e.message}</p>
-    `;
-  }
-  BACKEND_BASE = "https://veerenstael-quickscan-backend.onrender.com";
-}
+// ===== Backend-basis: Netlify Functions =====
+const BACKEND_BASE = window.location.origin;
 
 // ===== Vragen =====
 const QUESTIONS = {
@@ -184,7 +146,8 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  const submitUrl = `${BACKEND_BASE}/submit`;
+  // Netlify Function URL
+  const submitUrl = `${BACKEND_BASE}/.netlify/functions/submit`;
 
   try {
     const res = await fetch(submitUrl, {
@@ -214,7 +177,7 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
         <h2>✅ Dank je wel!</h2>
         <p>De QuickScan is ontvangen.${payload.email_sent
           ? " Het PDF-rapport is per e-mail verzonden."
-          : " E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}
+          : " E-mail verzenden is overgeslagen. Controleer of je e-mailadres correct is ingevuld."}
         </p>
       `;
     }
