@@ -438,8 +438,24 @@ def submit():
                 with open(filename,"rb") as f:
                     attach=MIMEApplication(f.read(), _subtype="pdf")
                     attach.add_header("Content-Disposition","attachment",filename=filename); msg.attach(attach)
-                smtp_server=os.getenv("SMTP_SERVER","smtp.gmail.com"); smtp_port=int(os.getenv("SMTP_PORT","587"))
-                s=smtplib.SMTP(smtp_server,smtp_port); s.starttls(); s.login(email_user,email_pass); s.send_message(msg); s.quit()
+               smtp_server=os.getenv("SMTP_SERVER","smtp.gmail.com")
+                smtp_port=int(os.getenv("SMTP_PORT","587"))
+                
+                # Probeer eerst poort 465 met SSL, anders 587 met STARTTLS
+                try:
+                    s=smtplib.SMTP_SSL(smtp_server, 465, timeout=30)
+                    s.login(email_user,email_pass)
+                    s.send_message(msg)
+                    s.quit()
+                    app.logger.info("Email verzonden via SSL poort 465")
+                except Exception as ssl_error:
+                    app.logger.warning(f"SSL poort 465 failed: {ssl_error}, probeer STARTTLS poort 587")
+                    s=smtplib.SMTP(smtp_server,smtp_port,timeout=30)
+                    s.starttls()
+                    s.login(email_user,email_pass)
+                    s.send_message(msg)
+                    s.quit()
+                    app.logger.info("Email verzonden via STARTTLS poort 587")
                 email_sent=True
             except Exception as e:
                 app.logger.error(f"E-mail verzenden mislukt: {e}")
@@ -449,5 +465,6 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
