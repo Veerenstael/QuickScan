@@ -62,12 +62,12 @@ const QUESTIONS = {
     "Worden terugkerende storingen en trendanalyses gebruikt om te verbeteren?"
   ],
   "Maintenance & Reliability Engineering": [
-    "Is er een proces om technische risico’s en faalkosten in kaart te brengen en te beheersen (bijv. met RCM of LCC)?",
+    "Is er een proces om technische risico's en faalkosten in kaart te brengen en te beheersen (bijv. met RCM of LCC)?",
     "Worden onderhoudsplannen en sparepartsbeleid periodiek herzien?"
   ],
   "Inregelen onderhoudsplan": [
     "Zijn onderhoudsplannen geborgd in systemen (OMS/EAM) en worden deze periodiek herzien?",
-    "Wordt er gewerkt met een continu verbeterproces (bijv. met PDCA) om plannen, SLA’s en KPI's bij te sturen?"
+    "Wordt er gewerkt met een continu verbeterproces (bijv. met PDCA) om plannen, SLA's en KPI's bij te sturen?"
   ]
 };
 
@@ -87,7 +87,7 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-// “Uw cijfer” met 5 klikbare bolletjes (1..5) met cijfers erin
+// "Uw cijfer" met 5 klikbare bolletjes (1..5) met cijfers erin
 function scoreDots(name, initial) {
   const wrap = el("div", { class: "score-dots" });
   const label = el("span", { class: "label" }, "Uw cijfer:");
@@ -160,8 +160,26 @@ function showError(where, msg) {
   `;
 }
 
+// Formulier submit met loading indicator
 document.getElementById("quickscan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+
+  // Toon loading bericht
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const originalText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "⏳ Genereren en opsturen...";
+  submitBtn.style.opacity = "0.7";
+
+  const resultBox = document.getElementById("result");
+  if (resultBox) {
+    resultBox.removeAttribute("hidden");
+    resultBox.className = "result-block";
+    resultBox.innerHTML = `
+      <h2>⏳ Bezig met verwerken...</h2>
+      <p>Even geduld, we maken je PDF-rapport en verzenden deze per e-mail.</p>
+    `;
+  }
 
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
@@ -181,6 +199,10 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     if (!res.ok) {
       const msg = payload && payload.error ? payload.error : `HTTP ${res.status}`;
       showError("Backend-response", msg);
+      // Reset knop
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+      submitBtn.style.opacity = "1";
       return;
     }
 
@@ -189,16 +211,23 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
       box.removeAttribute("hidden");
       box.className = "result-block";
       box.innerHTML = `
-        <h2>Dank je wel!</h2>
+        <h2>✅ Dank je wel!</h2>
         <p>De QuickScan is ontvangen.${payload.email_sent
           ? " Het PDF-rapport is per e-mail verzonden."
           : " E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}
         </p>
       `;
     }
+    // Reset knop
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+    submitBtn.style.opacity = "1";
   } catch (err) {
     showError("Netwerkfout", String(err));
     console.error(err);
+    // Reset knop
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+    submitBtn.style.opacity = "1";
   }
 });
-
