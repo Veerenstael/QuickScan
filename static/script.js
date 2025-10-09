@@ -9,7 +9,7 @@ function resolveBackendBase() {
     if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
       base = "http://127.0.0.1:5000";
     } else {
-      base = "https://veerenstael-quickscan-backend.onrender.com";
+      base = window.location.origin;
     }
   }
   base = base.replace(/\/+$/, "");
@@ -201,3 +201,4 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     console.error(err);
   }
 });
+
