@@ -18,7 +18,12 @@ import numpy as np
 from matplotlib.patches import FancyBboxPatch
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, 
+     resources={r"/*": {"origins": "*"}},
+     allow_headers=["Content-Type"],
+     methods=["GET", "POST", "OPTIONS"],
+     supports_credentials=False
+)
 
 VERSION = "QS-2025-09-18-v13-zonder-AI"
 
@@ -443,3 +448,4 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
+
