@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyBboxPatch
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app, 
      resources={r"/*": {"origins": "*"}},
      allow_headers=["Content-Type"],
@@ -324,7 +324,8 @@ def health(): return jsonify({"status":"ok"}), 200
 def version(): return jsonify({"version": VERSION}), 200
 
 @app.route("/", methods=["GET"])
-def home(): return "✅ Veerenstael Quick Scan backend is live"
+def home(): 
+    return app.send_static_file('index.html')
 
 @app.route("/submit", methods=["POST","OPTIONS"])
 def submit():
@@ -448,4 +449,5 @@ def submit():
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
+
 
