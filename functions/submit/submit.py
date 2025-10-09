@@ -355,4 +355,104 @@ def handler(event, context):
             pdf.cell(0, 7, pdf.utext(sect), ln=True)
             pdf.set_text_color(0, 0, 0)
             pdf.table_header()
-            cust_scores =
+            cust_scores = []
+            for vraag, antwoord, cust in rows:
+                if cust != "-":
+                    try:
+                        ci = int(cust)
+                        cust_scores.append(ci)
+                    except:
+                        pass
+                pdf.row_two_cols(vraag, antwoord, cust)
+            subj_avg = round(sum(cust_scores) / len(cust_scores), 2) if cust_scores else 0
+            radar_sections.append(sect)
+            radar_vals.append(subj_avg)
+            pdf.ln(1)
+
+        # Radar
+        if radar_sections:
+            pdf.add_page()
+            img_path = "/tmp/radar.png"
+            try:
+                labels = radar_sections
+                values = radar_vals
+                N = len(labels)
+                values_cycle = values + values[:1]
+                angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+                angles += angles[:1]
+                fig = plt.figure(figsize=(5, 5))
+                ax = plt.subplot(111, polar=True)
+                ax.set_theta_offset(np.pi / 2)
+                ax.set_theta_direction(-1)
+                ax.set_xticks(angles[:-1])
+                ax.set_xticklabels(labels, fontsize=8)
+                ax.set_rlabel_position(0)
+                ax.set_yticks([1, 2, 3, 4, 5])
+                ax.set_yticklabels(["1", "2", "3", "4", "5"], fontsize=7)
+                ax.set_ylim(0, 5)
+                ax.plot(angles, values_cycle)
+                ax.fill(angles, values_cycle, alpha=0.25)
+                fig.tight_layout()
+                fig.savefig(img_path, dpi=75, bbox_inches="tight")
+                plt.close(fig)
+                plt.clf()
+                gc.collect()
+                pdf.section_title("Gemiddelde score per onderwerp (klant)")
+                pdf.image(img_path, w=140)
+            except Exception as e:
+                print(f"Radar error: {e}")
+
+            # Stoplicht
+            overlay_path = build_stoplight_overlay(radar_sections, radar_vals)
+            if overlay_path:
+                pdf.add_page()
+                pdf.section_title("Stoplichtoverzicht per onderwerp")
+                pdf.image(overlay_path, w=140)
+                gc.collect()
+
+        filename = "/tmp/quickscan.pdf"
+        pdf.output(filename)
+
+        # Email
+        email_user = os.environ.get("EMAIL_USER")
+        email_pass = os.environ.get("EMAIL_PASS")
+        email_to = data.get("email", "")
+        email_sent = False
+
+        if email_user and email_pass and email_to:
+            try:
+                msg = MIMEMultipart()
+                msg["From"] = email_user
+                msg["To"] = email_to
+                msg["Cc"] = os.environ.get("EMAIL_CC", "")
+                msg["Subject"] = "Resultaten Veerenstael Quick Scan"
+                body = f"Beste {data.get('name', '')},\n\nIn de bijlage staat het rapport van de QuickScan.\n\nMet vriendelijke groet,\nVeerenstael"
+                msg.attach(MIMEText(body))
+                with open(filename, "rb") as f:
+                    attach = MIMEApplication(f.read(), _subtype="pdf")
+                    attach.add_header("Content-Disposition", "attachment", filename="quickscan.pdf")
+                    msg.attach(attach)
+                
+                s = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+                s.starttls()
+                s.login(email_user, email_pass)
+                s.send_message(msg)
+                s.quit()
+                email_sent = True
+                print("Email met PDF verzonden!")
+            except Exception as e:
+                print(f"Email error: {e}")
+
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps({"email_sent": email_sent})
+        }
+
+    except Exception as e:
+        print(f"Function error: {e}")
+        return {
+            'statusCode': 500,
+            'headers': headers,
+            'body': json.dumps({"error": str(e)})
+        }
