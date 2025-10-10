@@ -4,4 +4,5 @@
 [functions]
   directory = "functions"
 
-
+[functions.submit]
+  included_files = ["afbeelding.png"]
