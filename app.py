@@ -9,6 +9,7 @@ from datetime import datetime
 import os
 import json
 import requests
+import gc
 
 # Headless plotting
 import matplotlib
@@ -20,7 +21,7 @@ from matplotlib.patches import FancyBboxPatch
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-10-10-NoAI"
+VERSION = "QS-2025-10-10-Memory-Optimized"
 
 # Kleuren (RGB)
 DARKBLUE = (34, 51, 68)
@@ -247,7 +248,9 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
     img = plt.imread(base_path)
     h, w = img.shape[0], img.shape[1]
     toppos = dict(DEFAULT_STOPLIGHT_TOPPOS)
-    fig = plt.figure(figsize=(w / 150, h / 150), dpi=150)
+    
+    # GEOPTIMALISEERD: Kleinere figuur + lagere DPI
+    fig = plt.figure(figsize=(w / 200, h / 200), dpi=75)
     ax = plt.axes([0, 0, 1, 1])
     ax.imshow(img)
     ax.axis("off")
@@ -303,8 +306,11 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
             bbox=dict(boxstyle="round,pad=0.25", fc=(0, 0, 0, 0.55), ec="none")
         )
 
-    fig.savefig(out_path, dpi=150, transparent=False)
+    # GEOPTIMALISEERD: Lagere DPI
+    fig.savefig(out_path, dpi=75, transparent=False)
     plt.close(fig)
+    plt.clf()
+    gc.collect()  # Force garbage collection
     return out_path
 
 @app.route("/health", methods=["GET"])
@@ -392,23 +398,30 @@ def submit():
                 values_cycle = values + values[:1]
                 angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
                 angles += angles[:1]
-                fig = plt.figure(figsize=(5, 5))
+                
+                # GEOPTIMALISEERD: Kleinere figuur
+                fig = plt.figure(figsize=(4, 4))
                 ax = plt.subplot(111, polar=True)
                 ax.set_theta_offset(np.pi / 2)
                 ax.set_theta_direction(-1)
                 ax.set_xticks(angles[:-1])
-                ax.set_xticklabels(labels, fontsize=8)
+                ax.set_xticklabels(labels, fontsize=7)
                 ax.set_rlabel_position(0)
                 ax.set_yticks([1, 2, 3, 4, 5])
-                ax.set_yticklabels(["1", "2", "3", "4", "5"], fontsize=7)
+                ax.set_yticklabels(["1", "2", "3", "4", "5"], fontsize=6)
                 ax.set_ylim(0, 5)
                 ax.plot(angles, values_cycle)
                 ax.fill(angles, values_cycle, alpha=0.25)
                 fig.tight_layout()
-                fig.savefig(img_path, dpi=180, bbox_inches="tight")
+                
+                # GEOPTIMALISEERD: Lagere DPI
+                fig.savefig(img_path, dpi=100, bbox_inches="tight")
                 plt.close(fig)
+                plt.clf()
+                gc.collect()  # Force garbage collection
+                
                 pdf.section_title("Gemiddelde score per onderwerp (klant)")
-                pdf.image(img_path, w=180)
+                pdf.image(img_path, w=160)
             except Exception as e:
                 app.logger.error(f"Radar error: {e}")
 
@@ -416,7 +429,8 @@ def submit():
             if overlay_path:
                 pdf.add_page()
                 pdf.section_title("Stoplichtoverzicht per onderwerp")
-                pdf.image(overlay_path, w=180)
+                pdf.image(overlay_path, w=160)
+                gc.collect()  # Extra cleanup
 
         filename = "quickscan.pdf"
         pdf.output(filename)
