@@ -4,5 +4,4 @@
 [functions]
   directory = "functions"
 
-[[plugins]]
-  package = "@netlify/plugin-python"
+
