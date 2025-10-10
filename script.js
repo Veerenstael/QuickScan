@@ -1,5 +1,5 @@
-// ===== Backend-basis: Netlify Functions =====
-const BACKEND_BASE = window.location.origin;
+// ===== Backend = Render =====
+const BACKEND_BASE = "https://veerenstael-quickscan-backend.onrender.com";
 
 // ===== Vragen =====
 const QUESTIONS = {
@@ -139,15 +139,14 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
     resultBox.className = "result-block";
     resultBox.innerHTML = `
       <h2>⏳ Bezig met verwerken...</h2>
-      <p>Even geduld, we maken je PDF-rapport en verzenden deze per e-mail.</p>
+      <p>Even geduld, we maken je PDF-rapport met radargrafiek en stoplichtoverzicht en verzenden deze per e-mail.</p>
     `;
   }
 
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  // Netlify Function URL
-  const submitUrl = `${BACKEND_BASE}/.netlify/functions/submit`;
+  const submitUrl = `${BACKEND_BASE}/submit`;
 
   try {
     const res = await fetch(submitUrl, {
@@ -175,9 +174,10 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
       box.className = "result-block";
       box.innerHTML = `
         <h2>✅ Dank je wel!</h2>
-        <p>De QuickScan is ontvangen.${payload.email_sent
-          ? " Het PDF-rapport is per e-mail verzonden."
-          : " E-mail verzenden is overgeslagen. Controleer of je e-mailadres correct is ingevuld."}
+        <p><strong>Gemiddeld cijfer:</strong> ${payload.total_score_customer || "-"}</p>
+        <p>${payload.email_sent
+          ? "Het PDF-rapport met radargrafiek en stoplichtoverzicht is per e-mail verzonden."
+          : "E-mail verzenden is overgeslagen. Controleer of je e-mailadres correct is ingevuld."}
         </p>
       `;
     }
