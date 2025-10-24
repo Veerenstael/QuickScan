@@ -17,7 +17,21 @@ import numpy as np
 from matplotlib.patches import FancyBboxPatch
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+
+# CORS configuratie - sta specifieke origins toe
+allowed_origins = [
+    "https://veerenstaelquickscan.netlify.app",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000"
+]
+
+CORS(app, 
+     resources={r"/*": {
+         "origins": allowed_origins,
+         "methods": ["GET", "POST", "OPTIONS"],
+         "allow_headers": ["Content-Type"],
+         "supports_credentials": True
+     }})
 
 VERSION = "QS-2025-10-24-v1-no-ai"
 
