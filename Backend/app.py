@@ -7,8 +7,6 @@ from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from datetime import datetime
 import os
-import re
-import json
 import requests
 
 # Headless plotting voor Render
@@ -18,20 +16,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyBboxPatch
 
-# ====== Optioneel OpenAI client ======
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-client = None
-if OPENAI_KEY:
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_KEY)
-    except Exception:
-        client = None
-
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-VERSION = "QS-2025-09-18-v12-stoplicht-top-center"
+VERSION = "QS-2025-10-24-v1-no-ai"
 
 # ---------- Kleuren (RGB) ----------
 DARKBLUE = (34, 51, 68)
@@ -110,34 +98,6 @@ def ensure_model_image() -> str | None:
             return None
     return None
 
-# ===== AI helpers =====
-def ai_score(answer, question):
-    if not client: return 3
-    prompt=(f"Beoordeel kort het volgende antwoord op de vraag '{question}': {answer}\n\n"
-            "Geef uitsluitend één getal terug, van 1 (slecht) tot 5 (uitstekend).")
-    try:
-        resp=client.chat.completions.create(model="gpt-4o-mini",
-            messages=[{"role":"user","content":prompt}])
-        out=resp.choices[0].message.content.strip()
-        m=re.search(r"[1-5]", out); return int(m.group(0)) if m else 3
-    except Exception:
-        return 3
-
-def ai_summary(pairs):
-    if not client:
-        return ("Korte samenvatting: de ingevulde antwoorden zijn verzameld en geven "
-                "aanknopingspunten voor verbetering binnen asset management. "
-                "De uitwerking volgt in een vervolggesprek.")
-    regels=[f"{v}: {a}" for v,a,_s in pairs]; tekst="\n".join(regels)
-    prompt=("Maak een korte zakelijke samenvatting (±5 zinnen) van deze QuickScan-antwoordset.\n\n"
-            f"{tekst}\n\nSluit af met een beknopte conclusie.")
-    try:
-        resp=client.chat.completions.create(model="gpt-4o-mini",
-            messages=[{"role":"user","content":prompt}])
-        return resp.choices[0].message.content.strip()
-    except Exception:
-        return "Samenvatting kon niet worden gegenereerd."
-
 # ===== PDF helper =====
 class ReportPDF(FPDF):
     def __init__(self,*a,**k):
@@ -179,136 +139,96 @@ class ReportPDF(FPDF):
             try: self.image(lp,x=10,y=5,h=10)
             except Exception: pass
         self.set_text_color(255,255,255); self.ufont(14,True)
-        self.set_xy(0,7); self.cell(0,10,self.utext("Quick Scan"),align="C")
-        self.set_text_color(0,0,0); self.set_y(26)
+        self.set_xy(10,16); self.cell(0,6,self.utext("Quick Scan Rapport"),align="L")
+        self.ln(12)
     def footer(self):
-        self.set_y(-12); self.ufont(8,False); self.set_text_color(120,120,120)
-        self.cell(0,8,f"Veerenstael Quick Scan · {VERSION}",align="C")
+        self.set_y(-15); self.set_text_color(120,120,120); self.ufont(8)
+        self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}",align="C")
     def section_title(self,txt):
-        self.ufont(12,True); self.set_text_color(*ACCENT)
+        self.ufont(13,True); self.set_text_color(*DARKBLUE)
         self.cell(0,8,self.utext(txt),ln=True); self.set_text_color(0,0,0)
-    def kv(self,k,v):
-        self.ufont(11,False); self.cell(40,7,self.utext(k),ln=0)
-        self.ufont(11,True); self.cell(0,7,self.utext(v),ln=True)
-    def _col_widths(self):
-        total=getattr(self,"epw", self.w-self.l_margin-self.r_margin)
-        w1=total*0.48; return w1, total-w1
+    def kv(self,key,val):
+        self.ufont(11,True); k_w=self.get_string_width(self.utext(key))+2
+        self.cell(k_w,6,self.utext(key)); self.ufont(11,False)
+        self.cell(0,6,self.utext(str(val)),ln=True)
     def table_header(self):
-        w1,w2=self._col_widths(); self.ufont(11,True)
-        self.set_fill_color(*DARKBLUE); self.set_text_color(255,255,255)
-        self.cell(w1,8,self.utext("Vraag"),1,0,"L",True)
-        self.cell(w2,8,self.utext("Antwoord / Cijfers (klant & AI)"),1,1,"L",True)
+        self.set_fill_color(*CELLBAND); self.ufont(10,True); self.set_text_color(255,255,255)
+        self.cell(90,7,"Vraag",border=0,fill=True)
+        self.cell(70,7,"Antwoord",border=0,fill=True)
+        self.cell(25,7,"Uw cijfer",border=0,fill=True,align="C"); self.ln()
         self.set_text_color(0,0,0)
-    def row_two_cols(self,left,right,cust,ai):
-        x0,y0=self.get_x(),self.get_y(); w1,w2=self._col_widths()
-        pad=1.4; lh=7.0; band_h=8.0
-        h_left=self._nb_lines(w1-2*pad,left,True,11,lh)*lh+2*pad
-        h_txt=self._nb_lines(w2-2*pad,f"Antwoord: {right}",False,11,lh)*lh+2*pad
-        h=max(h_left,h_txt+band_h)
-        self.rect(x0,y0,w1,h); self.rect(x0+w1,y0,w2,h)
-        self.set_xy(x0+pad,y0+pad); self.ufont(11,True)
-        self.multi_cell(w1-2*pad,lh,self.utext(left),0)
-        self.set_xy(x0+w1+pad,y0+pad); self.ufont(11,False)
-        self.multi_cell(w2-2*pad,lh,self.utext(f"Antwoord: {right}"),0)
-        yb=y0+h-band_h; self.set_fill_color(*CELLBAND)
-        self.rect(x0+w1,yb,w2,band_h,"F")
-        self.set_text_color(255,255,255); self.set_xy(x0+w1+pad,yb+(band_h-6)/2)
-        kl_w=max(40,w2*0.42); self.cell(kl_w-pad,6,self.utext(f"Cijfer klant: {cust}"),0,0,"C")
-        self.cell(w2-kl_w,6,self.utext(f"Cijfer AI: {ai}"),0,1,"L"); self.set_text_color(0,0,0)
-        self.set_xy(x0,y0+h)
+    def row_two_cols(self, vraag, antwoord, cust_score):
+        self.ufont(10,False)
+        vraag_lines=self._nb_lines(88, vraag, size=10)
+        antw_lines=self._nb_lines(68, antwoord, size=10)
+        
+        row_h=max(vraag_lines, antw_lines)*7 + 2
+        if self.get_y()+row_h > self.h-self.b_margin:
+            self.add_page(); self.table_header()
+        y0=self.get_y()
+        self.multi_cell(90,7,self.utext(vraag),border=0)
+        y1=self.get_y(); self.set_xy(100,y0)
+        self.multi_cell(70,7,self.utext(antwoord or "-"),border=0)
+        y2=self.get_y(); self.set_xy(170,y0)
+        
+        # Alleen klantcijfer tonen
+        self.cell(25,row_h,str(cust_score),border=0,align="C")
+        
+        self.set_xy(10, max(y1,y2))
+        self.set_draw_color(220,220,220); self.line(10,self.get_y(),200,self.get_y())
 
-# ===== Stoplicht-overlay =====
-# Coördinaten zijn NU "top-center" van het stoplicht (x,y ∈ 0..1)
-# Default posities afgestemd op jouw rode stippen:
-DEFAULT_STOPLIGHT_TOPPOS = {
-    "gegevens analyseren": [0.39, 0.13], 
-    "werk voorbereiden": [0.77, 0.13], 
-  "uitvoeren werkzaamheden": [0.96, 0.43], 
-  "werk afhandelen en controleren": [0.77, 0.72], 
-  "inregelen onderhoudsplan": [0.39, 0.72], 
-  "maintenance & reliability engineering": [0.025, 0.43], 
-  "am-strategie": [0.50, 0.28],
-}
+# ===== Stoplicht overlay =====
+def lamp_color(name: str):
+    if name=="red": return (0.85,0.15,0.15)
+    if name=="yellow": return (0.95,0.75,0.10)
+    return (0.20,0.80,0.30)
 
-def load_custom_positions():
-    # 1) JSON file naast app.py
-    if os.path.exists("stoplight_positions.json"):
-        try:
-            with open("stoplight_positions.json","r",encoding="utf-8") as f:
-                data=json.load(f)
-                return {k.lower(): tuple(v) for k,v in data.items()}
-        except Exception:
-            pass
-    # 2) Env-var met JSON
-    env_json=os.getenv("STOPLIGHT_POS_JSON","").strip()
-    if env_json:
-        try:
-            data=json.loads(env_json)
-            return {k.lower(): tuple(v) for k,v in data.items()}
-        except Exception:
-            pass
-    return {}
-
-def norm_name(s: str) -> str:
-    t=(s or "").lower().strip()
-    t=t.replace("’","'").replace("&"," & ").replace("  "," ")
-    t=t.replace("werkvoorbereiding","werk voorbereiden")
-    t=t.replace("uitvoering onderhoud","uitvoeren werkzaamheden")
-    # veelgebruikte aliassen:
-    if t in ("analyse gegevens","analyse van gegevens","gegevensanalyse","data analyse","data-analyse"):
-        t="gegevens analyseren"
-    if "am" in t and "strategie" in t:
-        t="am-strategie"
-    if "maintenance" in t and "reliability" in t:
-        t="maintenance & reliability engineering"
-    return t
-
-def bucket_for_score(v: float) -> str:
-    if v < 2.5:  return "red"
-    if v <= 3.5: return "yellow"
+def bucket_for_score(score: float) -> str:
+    if score < 2.5: return "red"
+    if score < 3.5: return "yellow"
     return "green"
 
-def lamp_color(name: str) -> tuple:
-    return {"red":(0.85,0.20,0.20),"yellow":(1.00,0.80,0.00),"green":(0.00,0.70,0.30)}.get(name,(0.6,0.6,0.6))
+def build_stoplight_overlay(sections: list, values: list, out_path="stoplicht.png"):
+    if not sections: return None
+    base_img_path=ensure_model_image()
+    if not base_img_path: return None
+    try:
+        from PIL import Image
+        base_img=Image.open(base_img_path).convert("RGBA")
+    except Exception:
+        return None
 
-def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.png"):
-    base_path=ensure_model_image()
-    if not base_path: return None
-    img=plt.imread(base_path); h,w=img.shape[0], img.shape[1]
+    w_img, h_img = base_img.size
+    dpi=100; fig_w, fig_h = w_img/dpi, h_img/dpi
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
+    ax.imshow(base_img, extent=[0, w_img, 0, h_img], aspect="auto", zorder=0)
+    ax.set_xlim(0, w_img); ax.set_ylim(0, h_img)
+    ax.axis("off"); fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
-    # posities (top-center), met optionele overrides
-    toppos=dict(DEFAULT_STOPLIGHT_TOPPOS)
-    toppos.update(load_custom_positions())
+    positions={
+        "Asset Management Strategie": (0.50, 0.72),
+        "Werkvoorbereiding": (0.77, 0.58),
+        "Uitvoering onderhoud": (0.77, 0.28),
+        "Werk afhandelen en controleren": (0.50, 0.14),
+        "Analyse gegevens": (0.23, 0.28),
+        "Maintenance & Reliability Engineering": (0.23, 0.58),
+        "Inregelen onderhoudsplan": (0.50, 0.43)
+    }
 
-    fig=plt.figure(figsize=(w/150, h/150), dpi=150)
-    ax=plt.axes([0,0,1,1]); ax.imshow(img); ax.axis("off")
+    radius = min(w_img, h_img) * 0.018
+    padding = radius * 1.4
+    housing_h = 2*padding + 6*radius
+    housing_w = 2*padding + 2*radius
 
-    if os.getenv("STOPLIGHT_DEBUG","0")=="1":
-        for i in range(11):
-            ax.plot([w*i/10,w*i/10],[0,h],color=(1,1,1,0.15),lw=0.8)
-            ax.plot([0,w],[h*i/10,h*i/10],color=(1,1,1,0.15),lw=0.8)
-            ax.text(w*i/10,12,f"{i/10:.1f}",color=(1,1,1,0.7),ha="center",va="top",fontsize=8)
-            ax.text(20,h*i/10,f"{i/10:.1f}",color=(1,1,1,0.7),ha="left",va="center",fontsize=8)
+    for i, section_name in enumerate(sections):
+        score = values[i] if i < len(values) else 3.0
+        pos = positions.get(section_name)
+        if not pos: continue
+        fx, fy = pos
+        cx = fx * w_img
+        cy = fy * h_img
+        top_y = cy + housing_h/2
 
-    # afmetingen stoplicht
-    housing_w = min(w, h) * 0.060
-    housing_h = min(w, h) * 0.115
-    radius    = housing_w * 0.20
-    padding   = housing_w * 0.12
-
-    for label, score in zip(section_labels, section_scores):
-        key=norm_name(label)
-        # als label niet bestaat, probeer iets behoudends
-        if key not in toppos:
-            continue
-        nx,ny=toppos[key]
-        # top-center -> (cx, top_y)
-        cx, top_y = nx*w, ny*h
-        # begrenzen binnen plaatje
-        cx=max(housing_w/2, min(w-housing_w/2, cx))
-        top_y=max(0, min(h-housing_h, top_y))
-
-        # behuizing
         box_x = cx - housing_w/2
         box_y = top_y
         shadow = FancyBboxPatch((box_x+2, box_y+2), housing_w, housing_h,
@@ -320,7 +240,6 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
                              linewidth=1.0, edgecolor=(1,1,1,0.9), facecolor=(0.15,0.17,0.20,0.85))
         ax.add_patch(box)
 
-        # lampjes (rood/geel/groen)
         centers=[(cx, box_y + padding + radius),
                  (cx, box_y + housing_h/2),
                  (cx, box_y + housing_h - padding - radius)]
@@ -333,7 +252,6 @@ def build_stoplight_overlay(section_labels, section_scores, out_path="stoplicht.
             lw=2.2 if name==active else 1.0
             ax.add_patch(plt.Circle((lx,ly), radius, color=col, ec="white", lw=lw))
 
-        # score-label boven de behuizing (net aan top vast)
         ax.text(cx, box_y-6, f"{score:.1f}", ha="center", va="top", fontsize=11, color="white",
                 bbox=dict(boxstyle="round,pad=0.25", fc=(0,0,0,0.55), ec="none"))
 
@@ -395,7 +313,7 @@ def submit():
 
         MIN_SPACE_FOR_SECTION=70
         radar_sections, radar_vals=[], []
-        all_ai, all_cust=[], []
+        all_cust=[]
 
         pdf.section_title("Vragen en antwoorden")
         for sect, rows in grouped.items():
@@ -405,28 +323,28 @@ def submit():
             pdf.cell(0,7,pdf.utext(sect),ln=True); pdf.set_text_color(0,0,0)
             pdf.table_header()
 
-            ai_scores=[]; cust_scores=[]
+            cust_scores=[]
             for vraag,antwoord,cust in rows:
-                score_ai=ai_score(antwoord, vraag); ai_scores.append(score_ai); all_ai.append(score_ai)
                 if cust!="-":
                     try: ci=int(cust); cust_scores.append(ci); all_cust.append(ci)
                     except Exception: pass
-                pdf.row_two_cols(vraag, antwoord, cust, score_ai)
+                pdf.row_two_cols(vraag, antwoord, cust)
 
-            all_vals=ai_scores+cust_scores
-            subj_avg=round(sum(all_vals)/len(all_vals),2) if all_vals else 0
+            subj_avg=round(sum(cust_scores)/len(cust_scores),2) if cust_scores else 0
             radar_sections.append(sect); radar_vals.append(subj_avg); pdf.ln(1)
 
-        avg_ai=round(sum(all_ai)/len(all_ai),2) if all_ai else 0
         avg_cust=round(sum(all_cust)/len(all_cust),2) if all_cust else 0
 
         pdf.ln(2); pdf.section_title("Scores")
-        pdf.kv("Gemiddeld cijfer klant:", str(avg_cust if all_cust else "-"))
-        pdf.kv("Gemiddeld cijfer AI:", str(avg_ai))
+        pdf.kv("Gemiddeld cijfer:", str(avg_cust if all_cust else "-"))
 
-        pairs_for_summary=[(v,a,s) for (v,a,s,_c) in items]
-        summary_text=ai_summary(pairs_for_summary)
-        pdf.ln(3); pdf.section_title("Samenvatting AI")
+        # Eenvoudige samenvatting zonder AI
+        summary_text = (f"U heeft in totaal {len(items)} vragen beantwoord over {len(grouped)} onderwerpen. "
+                       f"Het gemiddelde cijfer is {avg_cust:.1f}. "
+                       "De resultaten geven inzicht in de volwassenheid van uw asset management. "
+                       "In een vervolggesprek kunnen we de mogelijkheden voor verbetering bespreken.")
+        
+        pdf.ln(3); pdf.section_title("Samenvatting")
         pdf.ufont(11,False); pdf.multi_cell(0,7,pdf.utext(summary_text))
 
         if radar_sections:
@@ -460,7 +378,7 @@ def submit():
 
         filename="quickscan.pdf"; pdf.output(filename)
 
-        # E-mail (optioneel)
+        # E-mail
         email_user=os.getenv("EMAIL_USER"); email_pass=os.getenv("EMAIL_PASS")
         email_to=data.get("email",""); email_sent=False
         if email_user and email_pass and email_to:
@@ -468,7 +386,7 @@ def submit():
                 msg=MIMEMultipart(); msg["From"]=email_user; msg["To"]=email_to
                 msg["Cc"]=os.getenv("EMAIL_CC",""); msg["Subject"]="Resultaten Veerenstael Quick Scan"
                 body=(f"Beste {data.get('name','')},\n\n"
-                      "In de bijlage staat het rapport van de QuickScan met per vraag het antwoord en de cijfers (klant & AI).\n\n"
+                      "In de bijlage staat het rapport van de QuickScan met per vraag het antwoord en uw cijfer.\n\n"
                       f"Samenvatting:\n{summary_text}\n\nMet vriendelijke groet,\nVeerenstael")
                 msg.attach(MIMEText(body))
                 with open(filename,"rb") as f:
@@ -480,13 +398,9 @@ def submit():
             except Exception as e:
                 app.logger.error(f"E-mail verzenden mislukt: {e}")
 
-        return jsonify({"total_score_ai":avg_ai,
-                        "total_score_customer": avg_cust if all_cust else "",
+        return jsonify({"total_score_customer": avg_cust if all_cust else "",
                         "summary": summary_text,
                         "email_sent": email_sent}), 200
     except Exception as e:
         app.logger.error(f"Fout in submit: {e}")
         return jsonify({"error": str(e)}), 500
-
-
-
