@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Veerenstael Quick Scan</title>
+  <link rel="stylesheet" href="./style.css"/>
+  <link rel="icon" href="favicon.png" type="image/png"/>
+</head>
+<body>
+  <div class="dashboard-bg">
+    <!-- Header -->
+    <div class="logo-header">
+      <img
+        src="https://www.veerenstael.nl/wp-content/uploads/2020/06/logo-veerenstael-wit.png"
+        alt="Veerenstael"
+        class="veerenstael-logo"
+      />
+      <h1 class="subtitle-title">Quick Scan</h1>
+    </div>
+
+    <!-- Hoofdkaart -->
+    <div class="main-card">
+      <!-- Introductie -->
+      <div class="intro">
+        <h2>Introductie QuickScan</h2>
+        <p>
+          Deze QuickScan brengt in korte tijd de volwassenheid van het asset-management in kaart.
+          Beantwoord per onderwerp de vragen en geef een cijfer (1 t/m 5) aan je eigen antwoord.
+          Wij voegen daar een AI-beoordeling aan toe. In de PDF-rapportage vind je alle vragen,
+          antwoorden, de twee cijfers én een radargrafiek per onderwerp.
+        </p>
+
+        <!-- MODELFIGUUR -->
+        <figure class="intro-figure">
+          <!-- Zet afbeelding.png naast dit HTML-bestand -->
+          <img src="./afbeelding.png" alt="Eenvoud-model Veerenstael" class="intro-model"/>
+          <figcaption>Eenvoud-model: overzicht van de onderwerpen in de QuickScan.</figcaption>
+        </figure>
+      </div>
+
+      <!-- Formulier -->
+      <form id="quickscan-form">
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="name">Naam</label>
+            <input id="name" name="name" type="text" placeholder="Jouw naam" required/>
+          </div>
+          <div class="form-group">
+            <label for="company">Bedrijf</label>
+            <input id="company" name="company" type="text" placeholder="Bedrijfsnaam" required/>
+          </div>
+          <div class="form-group">
+            <label for="email">E-mail</label>
+            <input id="email" name="email" type="email" placeholder="naam@bedrijf.nl" required/>
+          </div>
+          <div class="form-group">
+            <label for="phone">Telefoonnummer</label>
+            <input id="phone" name="phone" type="tel" placeholder="06-…" />
+          </div>
+        </div>
+
+        <!-- Vragencontainer: wordt gevuld door script.js -->
+        <div id="questions" class="questions"></div>
+
+        <!-- Knoppen -->
+        <div class="button-row">
+          <button type="submit" class="green">Versturen</button>
+          <button type="reset" class="reset-btn">Reset</button>
+        </div>
+      </form>
+
+      <!-- Resultaat -->
+      <div id="result" class="result-block" hidden></div>
+    </div>
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>
