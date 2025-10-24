@@ -74,12 +74,12 @@ const QUESTIONS = {
     "Worden terugkerende storingen en trendanalyses gebruikt om te verbeteren?"
   ],
   "Maintenance & Reliability Engineering": [
-    "Is er een proces om technische risico’s en faalkosten in kaart te brengen en te beheersen (bijv. met RCM of LCC)?",
+    "Is er een proces om technische risico's en faalkosten in kaart te brengen en te beheersen (bijv. met RCM of LCC)?",
     "Worden onderhoudsplannen en sparepartsbeleid periodiek herzien?"
   ],
   "Inregelen onderhoudsplan": [
     "Zijn onderhoudsplannen geborgd in systemen (OMS/EAM) en worden deze periodiek herzien?",
-    "Wordt er gewerkt met een continu verbeterproces (bijv. met PDCA) om plannen, SLA’s en KPI's bij te sturen?"
+    "Wordt er gewerkt met een continu verbeterproces (bijv. met PDCA) om plannen, SLA's en KPI's bij te sturen?"
   ]
 };
 
@@ -178,8 +178,6 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
-  // Intro-tekst: veld bestaat niet meer in de HTML; niets meesturen
-
   const submitUrl = `${BACKEND_BASE}/submit`;
 
   try {
@@ -208,8 +206,7 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
       box.className = "result-block";
       box.innerHTML = `
         <h2>Resultaten QuickScan</h2>
-        <p><strong>Gemiddeld cijfer AI:</strong> ${payload.total_score_ai ?? "-"}</p>
-        <p><strong>Gemiddeld cijfer klant:</strong> ${payload.total_score_customer || "-"}</p>
+        <p><strong>Gemiddeld cijfer:</strong> ${payload.total_score_customer || "-"}</p>
         <p><strong>Samenvatting:</strong><br/>${payload.summary || "-"}</p>
         <p>${payload.email_sent ? "Het PDF-rapport is per e-mail verzonden." : "E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}</p>
       `;
