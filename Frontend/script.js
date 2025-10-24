@@ -175,6 +175,25 @@ function showError(where, msg) {
 document.getElementById("quickscan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
 
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const resultBox = document.getElementById("result");
+  
+  // Disable button en toon loading state
+  submitBtn.disabled = true;
+  submitBtn.classList.add("loading");
+  submitBtn.innerHTML = '<span class="spinner"></span>Bezig met verwerken...';
+  
+  // Toon loading bericht onder de knop
+  resultBox.removeAttribute("hidden");
+  resultBox.className = "result-block loading-state";
+  resultBox.innerHTML = `
+    <div class="loading-animation">
+      <div class="loading-spinner"></div>
+      <h3>Even geduld...</h3>
+      <p>We verwerken uw antwoorden en genereren het rapport.</p>
+    </div>
+  `;
+
   const formData = new FormData(e.target);
   const data = Object.fromEntries(formData.entries());
 
@@ -196,22 +215,33 @@ document.getElementById("quickscan-form").addEventListener("submit", async (e) =
 
     if (!res.ok) {
       const msg = payload && payload.error ? payload.error : `HTTP ${res.status}`;
+      submitBtn.disabled = false;
+      submitBtn.classList.remove("loading");
+      submitBtn.innerHTML = 'Versturen';
       showError("Backend-response", msg);
       return;
     }
 
-    const box = document.getElementById("result");
-    if (box) {
-      box.removeAttribute("hidden");
-      box.className = "result-block";
-      box.innerHTML = `
-        <h2>Resultaten QuickScan</h2>
-        <p><strong>Gemiddeld cijfer:</strong> ${payload.total_score_customer || "-"}</p>
-        <p><strong>Samenvatting:</strong><br/>${payload.summary || "-"}</p>
-        <p>${payload.email_sent ? "Het PDF-rapport is per e-mail verzonden." : "E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}</p>
-      `;
-    }
+    // Toon succes resultaat
+    resultBox.className = "result-block success-state";
+    resultBox.innerHTML = `
+      <div class="success-icon">✓</div>
+      <h2>Resultaten QuickScan</h2>
+      <p><strong>Gemiddeld cijfer:</strong> ${payload.total_score_customer || "-"}</p>
+      <p><strong>Samenvatting:</strong><br/>${payload.summary || "-"}</p>
+      <p>${payload.email_sent ? "✉️ Het PDF-rapport is per e-mail verzonden." : "📄 E-mail verzenden is overgeslagen (geen e-mailconfig gevonden). Het rapport is lokaal op de server opgeslagen als quickscan.pdf."}</p>
+    `;
+    
+    // Reset button
+    submitBtn.disabled = false;
+    submitBtn.classList.remove("loading");
+    submitBtn.innerHTML = 'Versturen';
+    
   } catch (err) {
+    // Reset button bij fout
+    submitBtn.disabled = false;
+    submitBtn.classList.remove("loading");
+    submitBtn.innerHTML = 'Versturen';
     showError("Netwerkfout", String(err));
     console.error(err);
   }
